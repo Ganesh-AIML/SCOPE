@@ -1,0 +1,480 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "S.C.O.P.E. Platform Mock Data - Replace API calls with fetches to this file during development",
+    "lastUpdated": "2025-03-24",
+    "note": "Question banks are stored separately in /data/banks/ in production. Here they are inlined for convenience."
+  },
+
+  "users": [
+    {
+      "id": "u_001",
+      "name": "Rohan Mehta",
+      "email": "rohan.mehta@college.edu",
+      "role": "student",
+      "rollNumber": "CS2021045",
+      "batch": "2025",
+      "branch": "CS",
+      "division": "A",
+      "avatar": null
+    },
+    {
+      "id": "u_002",
+      "name": "Priya Sharma",
+      "email": "priya.sharma@college.edu",
+      "role": "student",
+      "rollNumber": "IT2021012",
+      "batch": "2025",
+      "branch": "IT",
+      "division": "B",
+      "avatar": null
+    },
+    {
+      "id": "u_003",
+      "name": "Prof. Anand Kulkarni",
+      "email": "a.kulkarni@college.edu",
+      "role": "teacher",
+      "department": "Computer Science",
+      "avatar": null
+    },
+    {
+      "id": "u_004",
+      "name": "Ms. Neha Joshi",
+      "email": "n.joshi@college.edu",
+      "role": "tnp_admin",
+      "avatar": null
+    },
+    {
+      "id": "u_005",
+      "name": "Mr. Vikram Patil",
+      "email": "v.patil@college.edu",
+      "role": "super_admin",
+      "avatar": null
+    }
+  ],
+
+  "questionBanks": [
+    {
+      "id": "bank_apt_001",
+      "name": "Aptitude Master Bank — 2025",
+      "section": "aptitude",
+      "format": "aiken",
+      "uploadedBy": "u_004",
+      "uploadedAt": "2025-01-10T09:00:00Z",
+      "totalQuestions": 6,
+      "questions": [
+        {
+          "id": "apt_q001",
+          "text": "A train travels 60 km in 1 hour. How long will it take to travel 210 km?",
+          "options": { "A": "2.5 hours", "B": "3 hours", "C": "3.5 hours", "D": "4 hours" },
+          "answer": "C",
+          "tag": "arithmetic",
+          "difficulty": "Easy"
+        },
+        {
+          "id": "apt_q002",
+          "text": "If 6 workers can complete a job in 12 days, how many days will 9 workers take?",
+          "options": { "A": "6 days", "B": "8 days", "C": "9 days", "D": "10 days" },
+          "answer": "B",
+          "tag": "arithmetic",
+          "difficulty": "Medium"
+        },
+        {
+          "id": "apt_q003",
+          "text": "Find the next number in the series: 2, 6, 12, 20, 30, ?",
+          "options": { "A": "40", "B": "42", "C": "44", "D": "38" },
+          "answer": "B",
+          "tag": "logical",
+          "difficulty": "Medium"
+        },
+        {
+          "id": "apt_q004",
+          "text": "A bag contains 4 red and 6 blue balls. What is the probability of picking a red ball?",
+          "options": { "A": "2/5", "B": "3/5", "C": "1/4", "D": "1/2" },
+          "answer": "A",
+          "tag": "probability",
+          "difficulty": "Easy"
+        },
+        {
+          "id": "apt_q005",
+          "text": "Choose the word most similar in meaning to 'BENEVOLENT':",
+          "options": { "A": "Cruel", "B": "Indifferent", "C": "Kind", "D": "Greedy" },
+          "answer": "C",
+          "tag": "verbalAbility",
+          "difficulty": "Easy"
+        },
+        {
+          "id": "apt_q006",
+          "text": "All roses are flowers. Some flowers fade quickly. Therefore:",
+          "options": {
+            "A": "All roses fade quickly",
+            "B": "Some roses may fade quickly",
+            "C": "No roses fade quickly",
+            "D": "All flowers are roses"
+          },
+          "answer": "B",
+          "tag": "verbalReasoning",
+          "difficulty": "Hard"
+        }
+      ]
+    },
+    {
+      "id": "bank_tech_001",
+      "name": "Technical MCQ Bank — CS/IT Core",
+      "section": "technical",
+      "format": "aiken",
+      "uploadedBy": "u_004",
+      "uploadedAt": "2025-01-12T11:30:00Z",
+      "totalQuestions": 6,
+      "questions": [
+        {
+          "id": "tech_q001",
+          "text": "Which layer of the OSI model is responsible for end-to-end communication?",
+          "options": { "A": "Network", "B": "Data Link", "C": "Transport", "D": "Session" },
+          "answer": "C",
+          "tag": "cn",
+          "difficulty": "Easy"
+        },
+        {
+          "id": "tech_q002",
+          "text": "Which normal form eliminates transitive dependencies?",
+          "options": { "A": "1NF", "B": "2NF", "C": "3NF", "D": "BCNF" },
+          "answer": "C",
+          "tag": "dbms",
+          "difficulty": "Medium"
+        },
+        {
+          "id": "tech_q003",
+          "text": "What is the time complexity of Binary Search on a sorted array of N elements?",
+          "options": { "A": "O(N)", "B": "O(N log N)", "C": "O(log N)", "D": "O(1)" },
+          "answer": "C",
+          "tag": "dsa",
+          "difficulty": "Easy"
+        },
+        {
+          "id": "tech_q004",
+          "text": "Which OOP principle allows a subclass to provide a specific implementation of a method already defined in its parent class?",
+          "options": { "A": "Encapsulation", "B": "Abstraction", "C": "Overloading", "D": "Overriding" },
+          "answer": "D",
+          "tag": "oops",
+          "difficulty": "Easy"
+        },
+        {
+          "id": "tech_q005",
+          "text": "Which page replacement algorithm suffers from Belady's Anomaly?",
+          "options": { "A": "LRU", "B": "Optimal", "C": "FIFO", "D": "LFU" },
+          "answer": "C",
+          "tag": "os",
+          "difficulty": "Hard"
+        },
+        {
+          "id": "tech_q006",
+          "text": "In SQL, which clause is used to filter groups after aggregation?",
+          "options": { "A": "WHERE", "B": "GROUP BY", "C": "HAVING", "D": "ORDER BY" },
+          "answer": "C",
+          "tag": "dbms",
+          "difficulty": "Medium"
+        }
+      ]
+    }
+  ],
+
+  "tests": [
+    {
+      "id": "test_live_001",
+      "title": "Infosys On-Campus Drive — Phase 1 Assessment",
+      "company": "Infosys",
+      "scheduledDate": "2025-03-28T10:00:00Z",
+      "duration": 120,
+      "status": "upcoming",
+      "createdBy": "u_004",
+      "targetBatches": ["2025"],
+      "targetBranches": ["CS", "IT", "EXTC"],
+      "targetDivisions": ["A", "B", "C"],
+      "eligibilityCriteria": {
+        "minCGPA": 6.5,
+        "noActiveBacklogs": true
+      },
+      "sections": {
+        "aptitude": {
+          "enabled": true,
+          "questionBankId": "bank_apt_001",
+          "questionsToAsk": 25,
+          "marksPerQuestion": 1,
+          "negativeMarking": -0.25,
+          "blueprint": {
+            "arithmetic": 5,
+            "logical": 5,
+            "probability": 5,
+            "verbalAbility": 5,
+            "verbalReasoning": 5
+          },
+          "totalMarks": 25
+        },
+        "technical": {
+          "enabled": true,
+          "questionBankId": "bank_tech_001",
+          "questionsToAsk": 25,
+          "marksPerQuestion": 1,
+          "negativeMarking": -0.25,
+          "blueprint": {
+            "cn": 5,
+            "dbms": 5,
+            "dsa": 5,
+            "oops": 5,
+            "os": 5
+          },
+          "totalMarks": 25
+        },
+        "coding": {
+          "enabled": true,
+          "totalMarks": 100,
+          "problems": [
+            {
+              "id": "prob_inf_01",
+              "title": "Two Sum",
+              "description": "Given an array of integers `nums` and an integer `target`, return indices of the two numbers such that they add up to `target`.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.\n\n**Example:**\nInput: nums = [2,7,11,15], target = 9\nOutput: [0,1]\n\n**Constraints:**\n- 2 <= nums.length <= 10^4\n- -10^9 <= nums[i] <= 10^9",
+              "difficulty": "Easy",
+              "marks": 50,
+              "timeLimit": 2,
+              "memoryLimit": 256,
+              "testCasesFile": "two_sum_cases.zip",
+              "sampleInput": "4\n2 7 11 15\n9",
+              "sampleOutput": "0 1"
+            },
+            {
+              "id": "prob_inf_02",
+              "title": "Longest Substring Without Repeating Characters",
+              "description": "Given a string `s`, find the length of the longest substring without repeating characters.\n\n**Example:**\nInput: s = \"abcabcbb\"\nOutput: 3 (The answer is \"abc\")\n\n**Constraints:**\n- 0 <= s.length <= 5 * 10^4\n- s consists of English letters, digits, symbols and spaces.",
+              "difficulty": "Medium",
+              "marks": 50,
+              "timeLimit": 2,
+              "memoryLimit": 256,
+              "testCasesFile": "longest_sub_cases.zip",
+              "sampleInput": "abcabcbb",
+              "sampleOutput": "3"
+            }
+          ]
+        }
+      },
+      "totalMarks": 150,
+      "cutoff": {
+        "overall": 90,
+        "coding": 50
+      }
+    },
+    {
+      "id": "test_past_001",
+      "title": "TCS NQT Mock — Internal Assessment",
+      "company": "TCS",
+      "scheduledDate": "2025-02-10T09:00:00Z",
+      "duration": 90,
+      "status": "completed",
+      "createdBy": "u_004",
+      "targetBatches": ["2025"],
+      "targetBranches": ["CS", "IT", "MECH", "CIVIL", "EXTC"],
+      "targetDivisions": ["A", "B", "C", "D"],
+      "sections": {
+        "aptitude": {
+          "enabled": true,
+          "questionBankId": "bank_apt_001",
+          "questionsToAsk": 20,
+          "marksPerQuestion": 1,
+          "negativeMarking": 0,
+          "totalMarks": 20
+        },
+        "technical": {
+          "enabled": true,
+          "questionBankId": "bank_tech_001",
+          "questionsToAsk": 20,
+          "marksPerQuestion": 1,
+          "negativeMarking": 0,
+          "totalMarks": 20
+        },
+        "coding": {
+          "enabled": false,
+          "problems": []
+        }
+      },
+      "totalMarks": 40,
+      "cutoff": {
+        "overall": 28,
+        "coding": null
+      },
+      "results": {
+        "totalStudents": 312,
+        "appeared": 298,
+        "qualifiedCutoff": 241,
+        "averageScore": 29.4,
+        "topScore": 40,
+        "scoreDistribution": [
+          { "range": "0-10", "count": 8 },
+          { "range": "11-20", "count": 31 },
+          { "range": "21-28", "count": 58 },
+          { "range": "29-35", "count": 142 },
+          { "range": "36-40", "count": 59 }
+        ]
+      }
+    },
+    {
+      "id": "test_past_002",
+      "title": "Wipro Elite NTH — Campus Drive",
+      "company": "Wipro",
+      "scheduledDate": "2025-01-20T10:30:00Z",
+      "duration": 150,
+      "status": "completed",
+      "createdBy": "u_004",
+      "targetBatches": ["2025"],
+      "targetBranches": ["CS", "IT", "EXTC"],
+      "targetDivisions": ["A", "B"],
+      "sections": {
+        "aptitude": {
+          "enabled": true,
+          "questionsToAsk": 25,
+          "marksPerQuestion": 1,
+          "negativeMarking": -0.33,
+          "totalMarks": 25
+        },
+        "technical": {
+          "enabled": true,
+          "questionsToAsk": 25,
+          "marksPerQuestion": 1,
+          "negativeMarking": -0.33,
+          "totalMarks": 25
+        },
+        "coding": {
+          "enabled": true,
+          "totalMarks": 100,
+          "problems": [
+            {
+              "id": "prob_wip_01",
+              "title": "Reverse a Linked List",
+              "difficulty": "Medium",
+              "marks": 50
+            },
+            {
+              "id": "prob_wip_02",
+              "title": "Maximum Subarray Sum (Kadane's Algorithm)",
+              "difficulty": "Hard",
+              "marks": 50
+            }
+          ]
+        }
+      },
+      "totalMarks": 150,
+      "cutoff": { "overall": 95, "coding": 60 },
+      "results": {
+        "totalStudents": 187,
+        "appeared": 180,
+        "qualifiedCutoff": 102,
+        "averageScore": 88.2,
+        "topScore": 148
+      }
+    }
+  ],
+
+  "studentSubmissions": [
+    {
+      "id": "sub_001",
+      "studentId": "u_001",
+      "testId": "test_past_001",
+      "submittedAt": "2025-02-10T10:28:00Z",
+      "totalScore": 32,
+      "sectionScores": {
+        "aptitude": 16,
+        "technical": 16,
+        "coding": null
+      },
+      "rank": 48,
+      "percentile": 83.9,
+      "qualified": true,
+      "aptitudeResponses": [
+        { "questionId": "apt_q001", "selectedOption": "C", "isCorrect": true, "timeTaken": 45 },
+        { "questionId": "apt_q002", "selectedOption": "A", "isCorrect": false, "timeTaken": 90 },
+        { "questionId": "apt_q003", "selectedOption": "B", "isCorrect": true, "timeTaken": 60 },
+        { "questionId": "apt_q004", "selectedOption": "A", "isCorrect": true, "timeTaken": 30 },
+        { "questionId": "apt_q005", "selectedOption": "C", "isCorrect": true, "timeTaken": 20 },
+        { "questionId": "apt_q006", "selectedOption": "A", "isCorrect": false, "timeTaken": 120 }
+      ],
+      "codingSubmissions": []
+    },
+    {
+      "id": "sub_002",
+      "studentId": "u_001",
+      "testId": "test_past_002",
+      "submittedAt": "2025-01-20T13:05:00Z",
+      "totalScore": 118,
+      "sectionScores": {
+        "aptitude": 21,
+        "technical": 22,
+        "coding": 75
+      },
+      "rank": 12,
+      "percentile": 93.3,
+      "qualified": true,
+      "codingSubmissions": [
+        {
+          "problemId": "prob_wip_01",
+          "language": "Python",
+          "score": 50,
+          "testCasesPassed": 10,
+          "testCasesTotal": 10,
+          "executionTime": 0.042,
+          "memoryUsed": 18.4,
+          "timeComplexity": "O(N)",
+          "spaceComplexity": "O(1)",
+          "submittedCode": "def reverseList(head):\n    prev = None\n    curr = head\n    while curr:\n        next_node = curr.next\n        curr.next = prev\n        prev = curr\n        curr = next_node\n    return prev"
+        },
+        {
+          "problemId": "prob_wip_02",
+          "language": "Python",
+          "score": 25,
+          "testCasesPassed": 5,
+          "testCasesTotal": 10,
+          "executionTime": 0.18,
+          "memoryUsed": 22.1,
+          "timeComplexity": "O(N²)",
+          "spaceComplexity": "O(1)",
+          "submittedCode": "def maxSubArray(nums):\n    max_sum = nums[0]\n    for i in range(len(nums)):\n        current = 0\n        for j in range(i, len(nums)):\n            current += nums[j]\n            max_sum = max(max_sum, current)\n    return max_sum"
+        }
+      ]
+    }
+  ],
+
+  "liveExamState": {
+    "testId": "test_live_001",
+    "startedAt": null,
+    "students": [
+      { "id": "u_001", "name": "Rohan Mehta", "rollNumber": "CS2021045", "branch": "CS", "division": "A", "status": "registered", "alerts": [] },
+      { "id": "u_002", "name": "Priya Sharma", "rollNumber": "IT2021012", "branch": "IT", "division": "B", "status": "registered", "alerts": [] }
+    ]
+  },
+
+  "systemHealth": {
+    "redisQueue": {
+      "pendingJobs": 0,
+      "processingJobs": 0,
+      "completedToday": 0,
+      "failedToday": 0,
+      "throughputPerMinute": 0
+    },
+    "judgeNodes": [
+      { "id": "node_master", "label": "Master Node", "cpuUsage": 12, "memoryUsage": 34, "status": "idle", "jobsProcessed": 0 },
+      { "id": "node_child_01", "label": "Worker Node 01", "cpuUsage": 8, "memoryUsage": 28, "status": "idle", "jobsProcessed": 0 },
+      { "id": "node_child_02", "label": "Worker Node 02", "cpuUsage": 9, "memoryUsage": 31, "status": "idle", "jobsProcessed": 0 }
+    ]
+  },
+
+  "enums": {
+    "branches": ["CS", "IT", "EXTC", "MECH", "CIVIL", "EE"],
+    "batches": ["2025", "2026", "2027"],
+    "divisions": ["A", "B", "C", "D"],
+    "difficulties": ["Easy", "Medium", "Hard"],
+    "testStatuses": ["draft", "upcoming", "live", "completed", "cancelled"],
+    "roles": ["student", "teacher", "tnp_admin", "super_admin"],
+    "aptitudeTags": ["arithmetic", "logical", "probability", "verbalAbility", "verbalReasoning"],
+    "technicalTags": ["cn", "dbms", "dsa", "oops", "os"],
+    "supportedLanguages": ["C", "C++", "Java", "Python", "JavaScript"],
+    "questionFormats": ["aiken", "csv", "manual"]
+  }
+}

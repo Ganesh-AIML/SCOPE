@@ -1,0 +1,35 @@
+# Node modules (VERY IMPORTANT)
+node_modules/
+*/node_modules/
+
+# Environment files (secrets)
+.env
+*.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build folders
+dist/
+build/
+
+# Vite files
+.vite/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Prisma (optional - keep schema, ignore generated)
+prisma/generated/
+
+# Cache
+.cache/

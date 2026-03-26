@@ -1,0 +1,140 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. The Main Test Configuration
+model TnpTest {
+  id              String   @id @default(uuid())
+  title           String
+  date            DateTime // Scheduled Date
+  duration        Int      // In minutes
+  attemptLimit    Int      @default(1)
+  startPassword   String?  // Optional
+  endPassword     String?  // Optional
+  showScore       Boolean  @default(false)
+  status          String   @default("Draft") // Draft, Upcoming, Live, Completed
+
+  codingProblems  TnpCodingProblem[]
+  sections        TnpSection[]
+
+  results        StudentResult[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// 2. The Coding Problems (Matches CodingProblemBuilder.jsx)
+model TnpCodingProblem {
+  id              String   @id @default(uuid())
+  testId          String
+  title           String
+  description     String   // Stores the problem statement
+  marks           Int      @default(10)
+  timeLimit       Float    // In seconds (e.g., 2.0)
+  memoryLimit     Int      // In KB (e.g., 128000)
+  
+  testCases       TnpTestCase[]
+
+  // Relation back to the Test
+  test            TnpTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
+}
+
+// 3. The Test Cases (Hidden & Visible)
+model TnpTestCase {
+  id              String   @id @default(uuid())
+  problemId       String
+  input           String   // Base64 encoded to prevent parsing errors
+  expectedOutput  String   // Base64 encoded
+  isHidden        Boolean  @default(false)
+
+  // Relation back to the Coding Problem
+  problem         TnpCodingProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+}
+
+// 4. Test Sections (Aptitude, Technical)
+model TnpSection {
+  id          String        @id @default(uuid())
+  testId      String
+  name        String        // e.g., "Aptitude" or "Technical"
+  
+  questions   TnpQuestion[]
+  
+  // Relation back to the Test
+  test        TnpTest       @relation(fields: [testId], references: [id], onDelete: Cascade)
+}
+
+// 5. Multiple Choice Questions (MCQs)
+model TnpQuestion {
+  id          String     @id @default(uuid())
+  sectionId   String
+  text        String
+  optA        String
+  optB        String
+  optC        String
+  optD        String
+  ans         String     // The correct option: "A", "B", "C", or "D"
+
+  // Relation back to the Section
+  section     TnpSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+}
+
+
+
+
+// --- STUDENT ---
+
+model StudentResult {
+  id           String   @id @default(cuid())
+  studentId    String   // Link to your User model (Anuj, etc.)
+  testId       String
+  test         TnpTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
+  
+  // Overall Metrics
+  totalScore   Float    @default(0)
+  percentile   Float?
+  timeTaken    Int      // in minutes
+  submittedAt  DateTime @default(now())
+  
+  // Section Breakdowns (matches your AnalysisBoard UI)
+  aptScore     Float    @default(0)
+  techScore    Float    @default(0)
+  codingScore  Float    @default(0)
+  
+  // Relational details
+  mcqSubmissions    McqSubmission[]
+  codingSubmissions CodingSubmission[]
+
+  @@index([studentId])
+}
+
+model McqSubmission {
+  id              String        @id @default(cuid())
+  resultId        String
+  result          StudentResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  questionId      String
+  selectedOption  String        // 'A', 'B', etc.
+  isCorrect       Boolean
+}
+
+model CodingSubmission {
+  id              String        @id @default(cuid())
+  resultId        String
+  result          StudentResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  problemId       String
+  language        String        // 'java', 'python', etc.
+  submittedCode   String        @db.Text
+  
+  // Performance (from Judge0)
+  status          String        // 'Accepted', 'TLE', 'WA'
+  testCasesPassed Int
+  totalTestCases  Int
+  runtime         String?       // e.g. "12ms"
+  memory          String?       // e.g. "42MB"
+}
