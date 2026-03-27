@@ -1,17 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const studentController = require('./student.controller');
+const { protect, restrictTo } = require('../../middleware/auth.middleware');
 
-// List of live exams
-router.get('/available-tests', studentController.getAvailableTests);
+// 🔒 Protect all student routes
+router.use(protect);
 
-// Deep fetch for the Exam Workspace (STRIPPED answers)
-router.get('/exam/:id', studentController.getExamDetails);
+// Only students can see available tests and submit
+router.get('/available-tests', restrictTo('STUDENT'), studentController.getAvailableTests);
+router.get('/exam/:id', restrictTo('STUDENT'), studentController.getExamDetails);
+router.post('/exam/:id/submit', restrictTo('STUDENT'), studentController.submitExam);
 
-// Submit the completed exam
-router.post('/exam/:id/submit', studentController.submitExam);
-
-// Fetch analysis for a specific test
-router.get('/analysis/:id', studentController.getAnalysis);
+// Students and Teachers/TnP can view analysis
+router.get('/analysis/:id', restrictTo('STUDENT', 'TEACHER', 'TNP_ADMIN'), studentController.getAnalysis);
 
 module.exports = router;

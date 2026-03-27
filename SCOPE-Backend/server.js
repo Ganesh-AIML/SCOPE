@@ -1,33 +1,47 @@
-const express = require('express');
-const cors = require('cors');
 require('dotenv').config();
 
-// Initialize Express App
+// ✅ CRITICAL SECURITY CHECK
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET is not defined in .env file.');
+  process.exit(1); // Stop the server immediately
+}
+
+const express = require('express');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
+
 const app = express();
+const server = http.createServer(app);
 
-// Middleware
-app.use(cors()); // Allows your React frontend to communicate with this backend
-app.use(express.json()); // Allows the server to read JSON data from requests
+app.use(cors()); 
+app.use(express.json()); 
 
-// Basic Health Check Route
-app.get('/', (req, res) => {
-  res.send('S.C.O.P.E. Engine Backend is Running!');
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- MODULE ROUTES ---
-// This connects the TNP Admin routes we just created
-app.use('/api/tnp', require('./src/modules/tnp/tnp.routes'));
+io.on('connection', (socket) => {
+  console.log(`⚡ A user connected: ${socket.id}`);
+  socket.on('disconnect', () => console.log(`🔌 A user disconnected: ${socket.id}`));
+});
 
-app.use('/api/student', require('./src/modules/student/student.routes'));
+// --- ROUTES INCORPORATED INTO YOUR STRUCTURE ---
+const authRoutes = require('./src/modules/auth/auth.routes');
+const tnpRoutes = require('./src/modules/tnp/tnp.routes');
+const studentRoutes = require('./src/modules/student/student.routes');
 
+app.use('/api/auth', authRoutes);
+app.use('/api/tnp', tnpRoutes);
+app.use('/api/student', studentRoutes);
 
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ message: 'S.C.O.P.E. Backend is Live! 🚀' });
+});
 
-
-
-
-
-// Start the Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
+  console.log(`=========================================`);
   console.log(`🚀 S.C.O.P.E. Server running on port ${PORT}`);
+  console.log(`=========================================`);
 });

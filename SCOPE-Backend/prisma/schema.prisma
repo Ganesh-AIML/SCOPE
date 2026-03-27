@@ -90,14 +90,15 @@ model TnpQuestion {
 
 
 
-// --- STUDENT ---
+// --- STUDENT RESULT ---
 
 model StudentResult {
   id           String   @id @default(cuid())
   studentId    String   // Link to your User model (Anuj, etc.)
+  user         User     @relation(fields: [studentId], references: [id], onDelete: Cascade) // Added this relation!
   testId       String
   test         TnpTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
-  
+
   // Overall Metrics
   totalScore   Float    @default(0)
   percentile   Float?
@@ -139,4 +140,69 @@ model CodingSubmission {
   totalTestCases  Int
   runtime         String?       // e.g. "12ms"
   memory          String?       // e.g. "42MB"
+}
+
+
+
+// --- ENUMS ---
+enum Role {
+  STUDENT
+  TEACHER
+  TNP_ADMIN
+  SUPER_ADMIN
+}
+
+enum Status {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+
+
+// --- CORE AUTH TABLE ---
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STUDENT)
+  status       Status   @default(PENDING)
+
+  studentProfile StudentProfile?
+  staffProfile   StaffProfile?
+  
+  // Link to the results we built earlier!
+  results        StudentResult[] 
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+model StudentProfile {
+  id        String @id @default(uuid())
+  userId    String @unique
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  rollNo    String @unique
+  tnpRollNo String @unique
+  branch    String
+  batch     String
+  division  String
+  year      String
+
+  @@map("student_profiles")
+}
+
+model StaffProfile {
+  id          String @id @default(uuid())
+  userId      String @unique
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  department  String?  
+  designation String?
+
+  @@map("staff_profiles")
 }
