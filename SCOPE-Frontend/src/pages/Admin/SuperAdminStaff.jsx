@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   User, Lock, Mail, CheckCircle, XCircle, LogOut, 
@@ -9,69 +9,149 @@ import {
 export default function SuperAdminStaff() {
   const navigate = useNavigate();
   
-  // UI State
+  // --- UI STATE ---
   const [activeTab, setActiveTab] = useState('teachers'); // 'teachers' or 'tnp'
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // --- MOCK DATA ---
-  const [teachers, setTeachers] = useState([
-    { id: 1, name: "Dr. A.K. Singh", dept: "Computer Science", email: "ak.singh@college.edu", status: "Pending" },
-    { id: 2, name: "Prof. Neha Gupta", dept: "Information Tech", email: "neha.g@college.edu", status: "Active" },
-    { id: 3, name: "Dr. R.K. Sharma", dept: "Computer Science", email: "rk.sharma@college.edu", status: "Active" }
-  ]);
+  // --- DYNAMIC DATA STATE ---
+  const [staffList, setStaffList] = useState([]);
 
-  const [tnpOfficers, setTnpOfficers] = useState([
-    { id: 4, name: "Ms. Kavita Rao", dept: "Placement Cell", email: "kavita.r@college.edu", status: "Pending" },
-    { id: 5, name: "Mr. Vivek Mehta", dept: "Placement Cell", email: "vivek.m@college.edu", status: "Active" }
-  ]);
+  // ==========================================
+  // 🚀 DATA FETCHING: Load from PostgreSQL
+  // ==========================================
+  const fetchStaffDirectory = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch('http://localhost:5000/api/admin/users/all', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-  // --- HANDLERS ---
-  const handleApprove = (id, type) => {
-    if (type === 'teacher') {
-      setTeachers(teachers.map(t => t.id === id ? { ...t, status: "Active" } : t));
-    } else {
-      setTnpOfficers(tnpOfficers.map(t => t.id === id ? { ...t, status: "Active" } : t));
-    }
-  };
+      const data = await response.json();
 
-  const handleReject = (id, type) => {
-    if(window.confirm("Are you sure you want to reject this staff registration request?")) {
-      if (type === 'teacher') {
-        setTeachers(teachers.filter(t => t.id !== id));
+      if (response.ok) {
+        // Filter out STUDENTS and SUPER_ADMINS, we only want TEACHER and TNP_ADMIN
+        const filteredStaff = data.filter(u => u.role === 'TEACHER' || u.role === 'TNP_ADMIN');
+        setStaffList(filteredStaff);
       } else {
-        setTnpOfficers(tnpOfficers.filter(t => t.id !== id));
+        alert(`Error loading staff: ${data.message || data.error}`);
       }
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      alert("Failed to load staff directory. Is the backend running?");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleResetPassword = (name) => {
-    if(window.confirm(`Reset password to "password" for ${name}?`)) {
-      alert(`Password for ${name} has been reset to "password".`);
+  useEffect(() => {
+    fetchStaffDirectory();
+  }, []);
+
+  // ==========================================
+  // ⚡ ACTION HANDLERS
+  // ==========================================
+  const handleApprove = async (id, name) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/admin/users/approve/${id}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setStaffList(prev => prev.map(staff => staff.id === id ? { ...staff, status: 'ACTIVE' } : staff));
+        alert(`${name} has been approved and activated.`);
+      } else {
+        const data = await response.json();
+        alert(`Error: ${data.message}`);
+      }
+    } catch (error) {
+      console.error("Approval Error:", error);
+      alert("Failed to connect to the server.");
     }
   };
 
-  const handleBulkReset = (role) => {
-    if(window.confirm(`WARNING: Are you sure you want to reset ALL ${role} passwords to 'password'? This action cannot be undone.`)) {
-      alert(`All ${role} passwords have been successfully reset to 'password'.`);
+  const handleReject = async (id, name) => {
+    if(!window.confirm(`Are you sure you want to permanently delete ${name}'s account?`)) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/admin/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setStaffList(prev => prev.filter(staff => staff.id !== id));
+      } else {
+        const data = await response.json();
+        alert(`Error: ${data.message}`);
+      }
+    } catch (error) {
+      console.error("Deletion Error:", error);
+      alert("Failed to connect to the server.");
     }
   };
 
-  const handleLogout = () => navigate('/');
+  const handleResetPassword = async (id, name) => {
+    if(!window.confirm(`Reset password to "password" for ${name}?`)) return;
 
-  // --- FILTER LOGIC ---
-  const activeData = activeTab === 'teachers' ? teachers : tnpOfficers;
-  
-  const filteredData = useMemo(() => {
-    return activeData.filter(staff => 
-      staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.email.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [activeData, searchQuery]);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/admin/users/reset-password`, {
+        method: 'PUT',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id })
+      });
 
-  // Separate pending and active for a clean UI view
-  const pendingStaff = filteredData.filter(s => s.status === 'Pending');
-  const activeStaff = filteredData.filter(s => s.status === 'Active');
+      if (response.ok) {
+        alert(`Password for ${name} has been reset to "password".`);
+      } else {
+        const data = await response.json();
+        alert(`Error: ${data.message}`);
+      }
+    } catch (error) {
+      console.error("Reset Error:", error);
+      alert("Failed to reset password.");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('scope_user');
+    navigate('/');
+  };
+
+  // --- FILTER & SORT LOGIC ---
+  const currentCategoryList = useMemo(() => {
+    const roleFilter = activeTab === 'teachers' ? 'TEACHER' : 'TNP_ADMIN';
+    let filtered = staffList.filter(staff => staff.role === roleFilter);
+    
+    if (searchQuery) {
+      filtered = filtered.filter(staff => 
+        staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        staff.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (staff.staffProfile?.department || "").toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Sort PENDING to the top, then alphabetically
+    return filtered.sort((a, b) => {
+      if (a.status === 'PENDING' && b.status !== 'PENDING') return -1;
+      if (a.status !== 'PENDING' && b.status === 'PENDING') return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [staffList, activeTab, searchQuery]);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
@@ -86,32 +166,18 @@ export default function SuperAdminStaff() {
                 <ShieldCheck size={18} className="text-white" />
               </div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                S.C.O.P.E. <span className="text-emerald-600">Core Admin</span>
+                S.C.O.P.E. <span className="text-emerald-700">Super Admin</span>
               </h1>
             </div>
 
-            <div className="flex items-center gap-6">
-              {/* Link to System Analysis */}
-              <button 
-                onClick={() => navigate('/admin/system')} 
-                className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-emerald-600 transition-colors"
-              >
-                <Activity size={16}/> Go to System Analysis
-              </button>
-
-              <button 
-                onClick={() => setIsProfileOpen(true)}
-                className="flex items-center gap-3 hover:bg-slate-50 p-2 rounded-lg transition-colors border border-transparent hover:border-slate-200"
-              >
-                <div className="text-right hidden md:block">
-                  <p className="text-sm font-bold text-slate-900 leading-tight">Super Admin</p>
-                  <p className="text-xs text-slate-500 font-medium">System Root</p>
-                </div>
-                <div className="h-10 w-10 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800">
-                  <User size={20} />
-                </div>
-              </button>
-            </div>
+            <button 
+              onClick={() => setIsProfileOpen(true)}
+              className="flex items-center gap-3 hover:bg-slate-50 p-2 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+            >
+              <div className="h-10 w-10 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800">
+                <User size={20} />
+              </div>
+            </button>
           </div>
         </div>
       </nav>
@@ -119,129 +185,125 @@ export default function SuperAdminStaff() {
       {/* --- MAIN CONTENT --- */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
         
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          {/* Tab Navigation */}
-          <div className="flex space-x-1 bg-slate-200/50 p-1 rounded-xl w-fit border border-slate-200">
-            <button
-              onClick={() => setActiveTab('teachers')}
-              className={`flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'teachers' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <GraduationCap size={16} /> Teachers Directory
-            </button>
-            <button
-              onClick={() => setActiveTab('tnp')}
-              className={`flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'tnp' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <Briefcase size={16} /> T&P Officers
-            </button>
-          </div>
-
-          <div className="relative w-full md:w-72">
-            <Search size={16} className="absolute left-3 top-3 text-slate-400" />
-            <input 
-              type="text" placeholder="Search staff by name or email..." value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border border-slate-300 text-slate-900 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-sm shadow-sm"
-            />
-          </div>
+        {/* Tab Navigation */}
+        <div className="flex space-x-1 flex-wrap sm:flex-nowrap bg-slate-200/50 p-1 rounded-xl w-fit mb-8 border border-slate-200 overflow-x-auto max-w-full">
+          {/* FIX 2: Added Back Button */}
+          <button
+            onClick={() => navigate(-1)} 
+            className="whitespace-nowrap flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all text-slate-600 hover:text-slate-900 hover:bg-white/50"
+          >
+            <Activity size={16} /> ← System Analysis
+          </button>
+          <div className="w-px bg-slate-300 my-1 mx-1 hidden sm:block"></div>
+          
+          <button
+            onClick={() => setActiveTab('teachers')}
+            className={`whitespace-nowrap flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'teachers' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            <GraduationCap size={16} /> Faculty Management
+          </button>
+          <button
+            onClick={() => setActiveTab('tnp')}
+            className={`whitespace-nowrap flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'tnp' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            <Briefcase size={16} /> T&P Admins
+          </button>
         </div>
 
-        {/* --- PENDING APPROVALS SECTION --- */}
-        {pendingStaff.length > 0 && (
-          <div className="bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden mb-8">
-            <div className="p-4 border-b border-amber-100 bg-amber-50 flex items-center justify-between">
+        {/* Directory Container */}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-in fade-in duration-300">
+          <div className="p-6 border-b border-slate-200 bg-slate-50 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-bold text-amber-900">Pending {activeTab === 'teachers' ? 'Teacher' : 'T&P'} Approvals</h2>
-                <p className="text-xs text-amber-700">Review requests before granting platform access.</p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {activeTab === 'teachers' ? 'Department Faculty' : 'Training & Placement Officers'}
+                </h2>
+                <p className="text-sm text-slate-500">Approve new registrations and manage credentials.</p>
               </div>
-              <span className="bg-amber-200 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">{pendingStaff.length} Pending</span>
+              <div className="relative w-full md:w-72">
+                <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                <input 
+                  type="text" placeholder="Search by name, email, or dept..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-900 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-sm shadow-sm"
+                />
+              </div>
             </div>
-            
+          </div>
+
+          {loading ? (
+             <div className="text-center p-12 text-slate-500 font-bold animate-pulse">Syncing with Secure Database...</div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-white border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
+                <thead className="bg-white border-b border-slate-200 text-xs uppercase font-bold text-slate-500 tracking-wider">
                   <tr>
-                    <th className="px-6 py-3">Name & Email</th>
-                    <th className="px-6 py-3">Department</th>
-                    <th className="px-6 py-3 text-right">Actions</th>
+                    <th className="px-6 py-4 w-1/3">Profile Details</th>
+                    <th className="px-6 py-4">Department / Designation</th>
+                    <th className="px-6 py-4 text-center">System Status</th>
+                    <th className="px-6 py-4 text-right">Administrative Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pendingStaff.map(staff => (
-                    <tr key={staff.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3 font-bold text-slate-900">{staff.name} <br/><span className="text-xs font-normal text-slate-500">{staff.email}</span></td>
-                      <td className="px-6 py-3 text-slate-600">{staff.dept}</td>
-                      <td className="px-6 py-3 text-right flex justify-end gap-2">
-                        <button onClick={() => handleReject(staff.id, activeTab)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <XCircle size={18} />
-                        </button>
-                        <button onClick={() => handleApprove(staff.id, activeTab)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold rounded-lg transition-colors text-xs">
-                          <CheckCircle size={14} /> Approve
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {currentCategoryList.length > 0 ? (
+                    currentCategoryList.map(staff => (
+                      <tr key={staff.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-slate-900">{staff.name}</p>
+                          <p className="text-xs text-slate-500">{staff.email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-slate-700">{staff.staffProfile?.department || 'N/A'}</p>
+                          <p className="text-xs text-slate-500">{staff.staffProfile?.designation || 'Staff Member'}</p>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {staff.status === 'PENDING' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              <AlertTriangle size={12} /> Pending
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <CheckCircle size={12} /> Active
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {staff.status === 'PENDING' && (
+                              <button 
+                                onClick={() => handleApprove(staff.id, staff.name)} 
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors text-xs"
+                              >
+                                Approve
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => handleResetPassword(staff.id, staff.name)} 
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
+                              title="Reset Password"
+                            >
+                              <RotateCcw size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleReject(staff.id, staff.name)} 
+                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                              title="Delete User"
+                            >
+                              <XCircle size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan="4" className="p-12 text-center text-slate-500 font-medium">No staff members found in this category.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-
-        {/* --- ACTIVE DIRECTORY SECTION --- */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Active {activeTab === 'teachers' ? 'Teachers' : 'T&P Officers'}</h2>
-              <p className="text-sm text-slate-500">Manage credentials for approved personnel.</p>
-            </div>
-            <button 
-              onClick={() => handleBulkReset(activeTab === 'teachers' ? 'Teacher' : 'T&P Officer')}
-              className="flex items-center gap-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 py-2 px-4 rounded-lg transition-colors"
-            >
-              <AlertTriangle size={16} /> Reset ALL to "password"
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white border-b border-slate-200 text-xs uppercase font-bold text-slate-500 tracking-wider">
-                <tr>
-                  <th className="px-6 py-4">Name & Email</th>
-                  <th className="px-6 py-4">Department</th>
-                  <th className="px-6 py-4 text-center">Status</th>
-                  <th className="px-6 py-4 text-right">Security Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {activeStaff.length > 0 ? (
-                  activeStaff.map(staff => (
-                    <tr key={staff.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-slate-900">{staff.name}</p>
-                        <p className="text-xs text-slate-500">{staff.email}</p>
-                      </td>
-                      <td className="px-6 py-4 text-slate-600">{staff.dept}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-md text-xs font-bold border border-emerald-200">Active</span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => handleResetPassword(staff.name)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold rounded-lg transition-colors text-xs"
-                        >
-                          <RotateCcw size={14} /> Reset Password
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr><td colSpan="4" className="p-8 text-center text-slate-500 font-medium">No active staff found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
-
       </main>
 
       {/* --- SECURE PROFILE SETTINGS MODAL --- */}
@@ -251,44 +313,15 @@ export default function SuperAdminStaff() {
           
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900">Admin Settings</h2>
+              <h2 className="text-xl font-bold text-slate-900">System Settings</h2>
               <button onClick={() => setIsProfileOpen(false)} className="text-slate-400 hover:text-slate-700 transition-colors">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Root Profile</p>
-                <p className="font-bold text-slate-900">Super Admin</p>
-                <p className="text-sm text-slate-600">S.C.O.P.E. Core Maintainer</p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100 space-y-4">
-                <h3 className="text-sm font-bold text-slate-900">Update Root Credentials</h3>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Current Password</label>
-                  <div className="relative">
-                    <Lock size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input type="password" placeholder="Enter current password" className="w-full bg-white border border-slate-300 text-slate-900 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-sm" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">New Password</label>
-                  <div className="relative">
-                    <Lock size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input type="password" placeholder="Create a new strong password" className="w-full bg-white border border-slate-300 text-slate-900 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-sm" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <div className="p-6 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
               <button onClick={handleLogout} className="flex items-center gap-2 text-red-600 hover:text-red-800 text-sm font-bold transition-colors">
-                <LogOut size={16} /> Sign Out
-              </button>
-              <button onClick={() => setIsProfileOpen(false)} className="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold py-2.5 px-6 rounded-lg transition-all shadow-sm">
-                Update Password
+                <LogOut size={16} /> Sign Out Securely
               </button>
             </div>
           </div>

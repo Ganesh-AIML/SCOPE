@@ -30,10 +30,14 @@ io.on('connection', (socket) => {
 const authRoutes = require('./src/modules/auth/auth.routes');
 const tnpRoutes = require('./src/modules/tnp/tnp.routes');
 const studentRoutes = require('./src/modules/student/student.routes');
+const teacherRoutes = require('./src/modules/teacher/teacher.routes'); 
+const adminRoutes = require('./src/modules/admin/admin.routes');       
 
 app.use('/api/auth', authRoutes);
 app.use('/api/tnp', tnpRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/teacher', teacherRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ message: 'S.C.O.P.E. Backend is Live! 🚀' });
