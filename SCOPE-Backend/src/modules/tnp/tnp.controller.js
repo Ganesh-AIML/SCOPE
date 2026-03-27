@@ -103,6 +103,8 @@ exports.scheduleTest = async (req, res) => {
 exports.getAllTests = async (req, res) => {
   try {
     const tests = await prisma.tnpTest.findMany({
+      // ✅ FIX 1: Filter out soft-deleted tests so they don't appear in the T&P UI
+      where: { deletedAt: null },
       orderBy: { date: 'desc' },
       select: {
         id: true, title: true, date: true, duration: true, status: true,
@@ -121,27 +123,28 @@ exports.deleteTest = async (req, res) => {
   try {
     const { id } = req.params; // Get the ID from the URL
 
-    // This single command deletes the test AND all related questions/problems 
-    // because of the onDelete: Cascade rule in our Prisma schema!
-    await prisma.tnpTest.delete({
-      where: { id: id }
+    // ✅ FIX 2: Soft Delete instead of Hard Delete
+    // This preserves the historical StudentResults and submissions linked to this test
+    await prisma.tnpTest.update({
+      where: { id: id },
+      data: { deletedAt: new Date() }
     });
 
-    res.status(200).json({ success: true, message: 'Test completely deleted.' });
+    res.status(200).json({ success: true, message: 'Test archived successfully.' });
   } catch (error) {
     console.error("Error deleting test:", error);
     res.status(500).json({ success: false, error: 'Failed to delete the test.' });
   }
 };
 
-
 // Get a single test by ID (with all nested questions and problems)
 exports.getTestById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const test = await prisma.tnpTest.findUnique({
-      where: { id: id },
+    // ✅ FIX 3: Changed to findFirst to enforce the deletedAt: null check
+    const test = await prisma.tnpTest.findFirst({
+      where: { id: id, deletedAt: null },
       include: {
         // Fetch MCQs
         sections: {
@@ -169,7 +172,6 @@ exports.getTestById = async (req, res) => {
   }
 };
 
-
 // Fetch detailed performance of a specific student for a specific test
 exports.getStudentPerformance = async (req, res) => {
   try {
@@ -194,15 +196,24 @@ exports.getStudentPerformance = async (req, res) => {
       return res.status(404).json({ success: false, error: "No performance record found." });
     }
 
-    // Transform data to match the StudentAnalyticsProfile.jsx mock structure
+    // ✅ FIX 4: O(1) Map Lookup (Fixes the N+1 Memory Bottleneck)
+    // Create a dictionary of questions so we don't run an array search 100+ times per student
+    const questionMap = new Map();
+    if (performance.test?.sections) {
+      performance.test.sections.forEach(sec => {
+        sec.questions.forEach(q => {
+          questionMap.set(q.id, { ...q, sectionName: sec.name });
+        });
+      });
+    }
+
+    // Transform data to match the StudentAnalyticsProfile.jsx structure
     const formattedMcqs = performance.mcqSubmissions.map(sub => {
-      const originalQ = performance.test.sections
-        .flatMap(s => s.questions)
-        .find(q => q.id === sub.questionId);
+      const originalQ = questionMap.get(sub.questionId); // Instant lookup
 
       return {
         id: sub.questionId.slice(-4),
-        section: performance.test.sections.find(s => s.questions.some(q => q.id === sub.questionId))?.name || "General",
+        section: originalQ?.sectionName || "General",
         question: originalQ?.text || "Question Deleted",
         selected: sub.selectedOption,
         correct: originalQ?.ans || "N/A",

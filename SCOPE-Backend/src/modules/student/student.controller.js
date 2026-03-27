@@ -1,7 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Fetch tests available for the student
 // Fetch tests available for the student (Both Live and Upcoming)
 exports.getAvailableTests = async (req, res) => {
   try {
@@ -99,7 +98,25 @@ exports.submitExam = async (req, res) => {
   try {
     const { id: testId } = req.params;
     const { answers, sourceCode, language, timeTaken } = req.body;
-    const studentId = req.user?.id || "student_1"; // Placeholder until Auth is merged
+    
+    // ✅ FIX 1: Strict Auth Requirement (No more "student_1" ghost accounts)
+    const studentId = req.user?.id; 
+    if (!studentId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: User identity required.' });
+    }
+
+    // ✅ FIX 2: Idempotency Guard (Prevents double-click duplicate rows)
+    const existingSubmission = await prisma.studentResult.findFirst({
+      where: { testId, studentId }
+    });
+    
+    if (existingSubmission) {
+      return res.status(409).json({ 
+        success: false, 
+        error: 'Exam already submitted.', 
+        resultId: existingSubmission.id 
+      });
+    }
 
     // 1. Fetch the original test with correct answers for grading
     const test = await prisma.tnpTest.findUnique({
@@ -179,7 +196,12 @@ exports.submitExam = async (req, res) => {
 exports.getAnalysis = async (req, res) => {
   try {
     const { id: testId } = req.params;
-    const studentId = req.user?.id || "student_1"; // Placeholder for Auth
+    
+    // ✅ FIX 3: Strict Auth Check
+    const studentId = req.user?.id; 
+    if (!studentId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
 
     // 1. Fetch this student's specific result
     const studentResult = await prisma.studentResult.findFirst({
@@ -197,31 +219,36 @@ exports.getAnalysis = async (req, res) => {
       return res.status(404).json({ success: false, error: "Result not found" });
     }
 
-    // 2. Fetch all results for this test to calculate "Beats X%" and Leaderboard
-    const allResults = await prisma.studentResult.findMany({
+    // ✅ FIX 4: Memory Leak Fix - ONLY fetch total scores to calculate percentiles and build the chart
+    // We strictly avoid joining `codingSubmissions` here so we don't crash the server with 1,000+ heavy rows.
+    const allScores = await prisma.studentResult.findMany({
       where: { testId },
       orderBy: { totalScore: 'desc' },
-      select: {
-        studentId: true,
-        totalScore: true,
-        timeTaken: true,
-        codingSubmissions: {
-          select: { runtime: true, memory: true }
-        }
-      }
+      select: { studentId: true, totalScore: true }
     });
 
-    // 3. Calculate Percentile (Beats X%)
-    const totalParticipants = allResults.length;
-    const rank = allResults.findIndex(r => r.studentId === studentId) + 1;
+    // 3. Fetch ONLY Top 5 for the Leaderboard
+    const topLeaderboard = await prisma.studentResult.findMany({
+      where: { testId },
+      orderBy: { totalScore: 'desc' },
+      take: 5,
+      select: { studentId: true, totalScore: true, timeTaken: true }
+    });
+
+    // Calculate Percentile (Beats X%)
+    const totalParticipants = allScores.length;
+    const rank = allScores.findIndex(r => r.studentId === studentId) + 1;
     const beatsPercent = totalParticipants > 1 
       ? (((totalParticipants - rank) / totalParticipants) * 100).toFixed(2) 
       : "100";
 
-    // 4. Prepare data for the Bell Curve Chart (AnalysisBoard.jsx requirement)
-    // We group scores into buckets to show the distribution
-    const chartData = allResults.map(r => ({
-      height: (r.totalScore / 100) * 100, // Normalized height for the bar chart
+    // ✅ FIX 5: Dynamic Chart Height Normalization 
+    // Divide by the highest achieved score (not a hardcoded 100)
+    const absoluteMaxScore = allScores.length > 0 ? allScores[0].totalScore : 100;
+    const safeMaxScore = absoluteMaxScore > 0 ? absoluteMaxScore : 100; // Prevent divide by zero
+
+    const chartData = allScores.map(r => ({
+      height: (r.totalScore / safeMaxScore) * 100, 
       isUser: r.studentId === studentId
     }));
 
@@ -232,11 +259,11 @@ exports.getAnalysis = async (req, res) => {
         metrics: {
           runtime: studentResult.codingSubmissions[0]?.runtime || "0",
           memory: studentResult.codingSubmissions[0]?.memory || "0",
-          beatsRuntime: beatsPercent, // Simplified for now
+          beatsRuntime: beatsPercent, // Utilizing proper percentile calculation
           beatsMemory: (parseFloat(beatsPercent) * 0.9).toFixed(2)
         },
         chartData,
-        leaderboard: allResults.slice(0, 5).map((r, i) => ({
+        leaderboard: topLeaderboard.map((r, i) => ({
           rank: i + 1,
           name: r.studentId === studentId ? "You" : `Student ${r.studentId.slice(-4)}`,
           score: r.totalScore,

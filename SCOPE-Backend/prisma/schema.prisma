@@ -20,11 +20,12 @@ model TnpTest {
   endPassword     String?  // Optional
   showScore       Boolean  @default(false)
   status          String   @default("Draft") // Draft, Upcoming, Live, Completed
+  deletedAt       DateTime?
 
   codingProblems  TnpCodingProblem[]
   sections        TnpSection[]
 
-  results        StudentResult[]
+  results         StudentResult[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -41,7 +42,7 @@ model TnpCodingProblem {
   memoryLimit     Int      // In KB (e.g., 128000)
   
   testCases       TnpTestCase[]
-
+  @@index([testId])
   // Relation back to the Test
   test            TnpTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
 }
@@ -83,6 +84,7 @@ model TnpQuestion {
 
   // Relation back to the Section
   section     TnpSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  @@index([sectionId])
 }
 
 

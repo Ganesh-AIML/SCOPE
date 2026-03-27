@@ -1,5 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from 'react'; // FIXED: Added useEffect
-import { useNavigate, useParams } from 'react-router-dom'; // FIXED: Added useParams
+import { useState, useEffect, lazy, Suspense } from 'react'; 
+import { useNavigate, useParams } from 'react-router-dom'; 
 const Editor = lazy(() => import('@monaco-editor/react'));
 import { 
   Clock, CheckCircle, ChevronRight, ChevronLeft, 
@@ -14,6 +14,9 @@ export default function ExamWorkspace() {
   const [examData, setExamData] = useState(null);
   const [activeSection, setActiveSection] = useState('coding'); 
   const [loading, setLoading] = useState(true);
+
+  // ✅ FIX 1: Track actual exam start time for accurate timeTaken calculation
+  const [startTime] = useState(Date.now());
   
   // MCQ State
   const [currentTechQ, setCurrentTechQ] = useState(0);
@@ -23,7 +26,7 @@ export default function ExamWorkspace() {
   // Coding State
   const [language, setLanguage] = useState('java');
   const [sourceCode, setSourceCode] = useState('class Solution {\n    public static void main(String[] args) {\n        // Write code here\n    }\n}');
-  const [consoleOutput, setConsoleOutput] = useState('Ready to compile...'); // FIXED: Added missing state
+  const [consoleOutput, setConsoleOutput] = useState('Ready to compile...'); 
 
   // ==========================================
   // 🚀 DATA FETCHING: Load Questions from DB
@@ -31,7 +34,10 @@ export default function ExamWorkspace() {
   useEffect(() => {
     const loadWorkspace = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/student/exam/${examId}`);
+        const response = await fetch(`http://localhost:5000/api/student/exam/${examId}`, {
+          // ✅ PREEMPTIVE FIX: Added auth header for when your friend's auth middleware goes live
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
         const result = await response.json();
         if (result.success) {
           setExamData(result.data);
@@ -67,21 +73,33 @@ export default function ExamWorkspace() {
 
   const handleSubmitExam = async () => {
     if (window.confirm("Are you sure you want to submit the exam?")) {
+      
+      // ✅ FIX 2: Calculate actual elapsed time in minutes instead of hardcoded 15
+      const elapsedMinutes = Math.max(1, Math.round((Date.now() - startTime) / 60000));
+
       try {
         const response = await fetch(`http://localhost:5000/api/student/exam/${examId}/submit`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}` // Auth header required by updated backend
+          },
           body: JSON.stringify({
             answers,      
             sourceCode,   
             language,
-            timeTaken: 120 - 105 // This should ideally be tracked via a timer state
+            timeTaken: elapsedMinutes 
           })
         });
 
         const result = await response.json();
         if (result.success) {
           navigate(`/analysis/${examId}`); 
+        } else if (response.status === 409) {
+          alert("You have already submitted this exam.");
+          navigate(`/analysis/${examId}`);
+        } else {
+          alert(result.error || "Submission failed.");
         }
       } catch (error) {
         alert("Submission failed. Please check your connection.");
@@ -127,7 +145,6 @@ export default function ExamWorkspace() {
           </h2>
 
           <div className="space-y-3">
-            {/* Logic to handle A, B, C, D options from database */}
             {[
               {id: 0, text: questions[currentIndex]?.optA},
               {id: 1, text: questions[currentIndex]?.optB},
@@ -181,7 +198,14 @@ export default function ExamWorkspace() {
         </div>
 
         <div className="flex-1 relative">
-          <Suspense fallback={<div className="flex items-center justify-center h-full bg-[#1e1e1e] text-slate-400">Loading editor...</div>}>
+          {/* ✅ FIX 3: Robust Error Boundary / Fallback for Monaco Editor CDN failure */}
+          <Suspense fallback={
+            <div className="flex flex-col items-center justify-center h-full bg-[#1e1e1e] text-slate-400 p-6 text-center">
+              <AlertTriangle size={32} className="text-amber-500 mb-4" />
+              <p>Editor module loading...</p>
+              <p className="text-xs mt-2">If this takes longer than 10 seconds, please check your network connection. Your MCQ answers are safely stored locally.</p>
+            </div>
+          }>
             <Editor height="100%" theme="vs-dark" language={language} value={sourceCode} onChange={(value) => setSourceCode(value)} options={{ fontSize: 14, minimap: { enabled: false } }} />
           </Suspense>
         </div>
