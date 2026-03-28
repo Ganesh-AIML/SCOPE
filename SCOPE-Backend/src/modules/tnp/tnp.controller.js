@@ -9,10 +9,8 @@ exports.scheduleTest = async (req, res) => {
       codingProblems, aptitudeSections, techSections 
     } = req.body;
 
-    // 2. Prepare the Sections Data dynamically
     const sectionsToCreate = [];
     
-    // Process Aptitude Sections
     let allAptitudeQs = [];
     if (aptitudeSections && aptitudeSections.length > 0) {
       aptitudeSections.forEach(sec => {
@@ -32,7 +30,6 @@ exports.scheduleTest = async (req, res) => {
       }
     }
 
-    // Process Technical Sections
     let allTechQs = [];
     if (techSections && techSections.length > 0) {
       techSections.forEach(sec => {
@@ -52,7 +49,6 @@ exports.scheduleTest = async (req, res) => {
       }
     }
 
-    // 3. Atomic transaction
     const newTest = await prisma.tnpTest.create({
       data: {
         title,
@@ -63,11 +59,7 @@ exports.scheduleTest = async (req, res) => {
         endPassword,
         showScore,
         status: status || 'Upcoming',
-        
-        sections: {
-          create: sectionsToCreate
-        },
-        
+        sections: { create: sectionsToCreate },
         codingProblems: {
           create: codingProblems?.map((problem) => ({
             title: problem.title,
@@ -75,7 +67,6 @@ exports.scheduleTest = async (req, res) => {
             marks: parseInt(problem.marks || 10),
             timeLimit: parseFloat(problem.timeLimit),
             memoryLimit: parseInt(problem.memoryLimit),
-            
             testCases: {
               create: problem.testCases?.map((tc) => ({
                 input: Buffer.from(tc.input).toString('base64'),
@@ -99,11 +90,9 @@ exports.scheduleTest = async (req, res) => {
   }
 };
 
-// ... Make sure your exports.getAllTests is still at the bottom!
 exports.getAllTests = async (req, res) => {
   try {
     const tests = await prisma.tnpTest.findMany({
-      // ✅ FIX 1: Filter out soft-deleted tests so they don't appear in the T&P UI
       where: { deletedAt: null },
       orderBy: { date: 'desc' },
       select: {
@@ -111,25 +100,37 @@ exports.getAllTests = async (req, res) => {
         _count: { select: { codingProblems: true } }
       }
     });
-    res.status(200).json({ success: true, data: tests });
+
+    // 🛡️ THE ROOT FIX: Pull aggregated scores manually to avoid Prisma relation crashes
+    const testIds = tests.map(t => t.id);
+    const allResults = await prisma.studentResult.findMany({
+        where: { testId: { in: testIds } },
+        select: { testId: true, totalScore: true }
+    });
+
+    const formattedTests = tests.map(t => {
+        const results = allResults.filter(r => r.testId === t.id);
+        const participants = results.length;
+        const avgScore = participants > 0
+            ? (results.reduce((sum, r) => sum + r.totalScore, 0) / participants).toFixed(1)
+            : 0;
+        return { ...t, participants, avgScore };
+    });
+
+    res.status(200).json({ success: true, data: formattedTests });
   } catch (error) {
     console.error("Error fetching tests:", error);
     res.status(500).json({ success: false, error: 'Failed to fetch tests.' });
   }
 };
 
-// Delete a Test
 exports.deleteTest = async (req, res) => {
   try {
-    const { id } = req.params; // Get the ID from the URL
-
-    // ✅ FIX 2: Soft Delete instead of Hard Delete
-    // This preserves the historical StudentResults and submissions linked to this test
+    const { id } = req.params;
     await prisma.tnpTest.update({
       where: { id: id },
       data: { deletedAt: new Date() }
     });
-
     res.status(200).json({ success: true, message: 'Test archived successfully.' });
   } catch (error) {
     console.error("Error deleting test:", error);
@@ -137,34 +138,18 @@ exports.deleteTest = async (req, res) => {
   }
 };
 
-// Get a single test by ID (with all nested questions and problems)
 exports.getTestById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // ✅ FIX 3: Changed to findFirst to enforce the deletedAt: null check
     const test = await prisma.tnpTest.findFirst({
       where: { id: id, deletedAt: null },
       include: {
-        // Fetch MCQs
-        sections: {
-          include: {
-            questions: true
-          }
-        },
-        // Fetch Coding Problems and their Test Cases
-        codingProblems: {
-          include: {
-            testCases: true
-          }
-        }
+        sections: { include: { questions: true } },
+        codingProblems: { include: { testCases: true } }
       }
     });
 
-    if (!test) {
-      return res.status(404).json({ success: false, error: 'Test not found.' });
-    }
-
+    if (!test) return res.status(404).json({ success: false, error: 'Test not found.' });
     res.status(200).json({ success: true, data: test });
   } catch (error) {
     console.error("Error fetching test details:", error);
@@ -172,17 +157,14 @@ exports.getTestById = async (req, res) => {
   }
 };
 
-// Fetch detailed performance of a specific student for a specific test
 exports.getStudentPerformance = async (req, res) => {
   try {
     const { testId, studentId } = req.params;
-
     const performance = await prisma.studentResult.findFirst({
       where: { testId, studentId },
       include: {
         mcqSubmissions: true,
         codingSubmissions: true,
-        // We include the test questions to show the "Question Text" in the UI
         test: {
           include: {
             sections: { include: { questions: true } },
@@ -192,25 +174,17 @@ exports.getStudentPerformance = async (req, res) => {
       }
     });
 
-    if (!performance) {
-      return res.status(404).json({ success: false, error: "No performance record found." });
-    }
+    if (!performance) return res.status(404).json({ success: false, error: "No performance record found." });
 
-    // ✅ FIX 4: O(1) Map Lookup (Fixes the N+1 Memory Bottleneck)
-    // Create a dictionary of questions so we don't run an array search 100+ times per student
     const questionMap = new Map();
     if (performance.test?.sections) {
       performance.test.sections.forEach(sec => {
-        sec.questions.forEach(q => {
-          questionMap.set(q.id, { ...q, sectionName: sec.name });
-        });
+        sec.questions.forEach(q => { questionMap.set(q.id, { ...q, sectionName: sec.name }); });
       });
     }
 
-    // Transform data to match the StudentAnalyticsProfile.jsx structure
     const formattedMcqs = performance.mcqSubmissions.map(sub => {
-      const originalQ = questionMap.get(sub.questionId); // Instant lookup
-
+      const originalQ = questionMap.get(sub.questionId); 
       return {
         id: sub.questionId.slice(-4),
         section: originalQ?.sectionName || "General",
@@ -240,5 +214,36 @@ exports.getStudentPerformance = async (req, res) => {
   } catch (error) {
     console.error("Error fetching student performance:", error);
     res.status(500).json({ success: false, error: "Internal server error." });
+  }
+};
+
+// 🛡️ THE ROOT FIX: New Aggregation Endpoint for Dashboard Analytics
+exports.getTestAnalytics = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const test = await prisma.tnpTest.findUnique({
+        where: { id },
+        include: {
+            sections: { include: { questions: true } },
+            codingProblems: { include: { testCases: true } }
+        }
+    });
+
+    if (!test) return res.status(404).json({ success: false, error: 'Test not found' });
+
+    const results = await prisma.studentResult.findMany({
+        where: { testId: id },
+        include: {
+            user: { select: { name: true, email: true, studentProfile: true } },
+            mcqSubmissions: true,
+            codingSubmissions: true
+        }
+    });
+
+    res.status(200).json({ success: true, data: { test, results } });
+  } catch (error) {
+    console.error("Analytics Error:", error);
+    res.status(500).json({ success: false, error: 'Failed to generate analytics.' });
   }
 };
