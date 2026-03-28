@@ -1,30 +1,37 @@
 const jwt = require('jsonwebtoken');
+const prisma = require('../config/db'); // Added DB import for live lookup
 
-// 🛡️ Middleware 1: Verify JWT and attach user to request
 exports.protect = async (req, res, next) => {
   let token;
-
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  if (req.headers.authorization?.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   }
 
   if (!token) {
-    return res.status(401).json({ success: false, error: 'Not authorized to access this route' });
+    return res.status(401).json({ success: false, error: 'Not authorized' });
   }
 
   try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'scope_secure_jwt_key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET); // Removed fallback string
 
-    // Attach user ID and role to the request object
-    req.user = {
-      id: decoded.id,
-      role: decoded.role
-    };
-    
+    // 🛡️ CRITICAL FIX: Live Database Check
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, role: true, status: true } // Only fetch what we need
+    });
+
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'User no longer exists' });
+    }
+
+    if (user.status !== 'ACTIVE') {
+      return res.status(403).json({ success: false, error: `Account is ${user.status.toLowerCase()}. Contact Admin.` });
+    }
+
+    req.user = user; 
     next();
   } catch (err) {
-    return res.status(401).json({ success: false, error: 'Token is invalid or expired' });
+    return res.status(401).json({ success: false, error: 'Token invalid or expired' });
   }
 };
 

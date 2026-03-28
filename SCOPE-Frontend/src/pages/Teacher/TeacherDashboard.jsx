@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   User, Lock, Mail, CheckCircle, XCircle, LogOut, 
   X, ShieldCheck, Search, RotateCcw, AlertTriangle, 
-  Users, Key, Copy, CalendarClock
+  Users, Key, Copy, CalendarClock, UploadCloud, FileText
 } from 'lucide-react';
 
 export default function TeacherDashboard() {
@@ -47,7 +47,7 @@ export default function TeacherDashboard() {
         alert(`Directory Error: ${activeData.message || activeData.error}`);
       }
     } catch (error) {
-      console.error("Fetch Data Error:", error); // FIX: Error variable used
+      console.error("Fetch Data Error:", error); 
       alert("Failed to load student data. Is the backend running?");
     } finally {
       setLoading(false);
@@ -78,7 +78,7 @@ export default function TeacherDashboard() {
         alert(`Error: ${data.message}`);
       }
     } catch (error) {
-      console.error("Approval Error:", error); // FIX: Error variable used
+      console.error("Approval Error:", error); 
       alert("Failed to connect to the server.");
     }
   };
@@ -96,10 +96,12 @@ export default function TeacherDashboard() {
       if (response.ok) {
         setPendingRequests(pendingRequests.filter(req => req.id !== id));
       } else {
-        alert("Failed to reject student.");
+        // 🛡️ FIX: Added error alert to prevent silent failure
+        const data = await response.json();
+        alert(`Failed: ${data.message || 'Could not reject student.'}`);
       }
     } catch (error) {
-      console.error("Rejection Error:", error); // FIX: Error variable used
+      console.error("Rejection Error:", error); 
       alert("Failed to connect to the server.");
     }
   };
@@ -120,10 +122,14 @@ export default function TeacherDashboard() {
 
       if (response.ok) {
         alert(`Password for ${student.name} has been reset to "password".`);
+      } else {
+        // 🛡️ FIX: Added error alert to prevent silent failure
+        const data = await response.json();
+        alert(`Failed: ${data.message || 'Could not reset password.'}`);
       }
     } catch (error) {
-      console.error("Reset Password Error:", error); // FIX: Error variable used
-      alert("Failed to reset password.");
+      console.error("Reset Password Error:", error); 
+      alert("Failed to reset password. Network error.");
     }
   };
 
@@ -145,9 +151,55 @@ export default function TeacherDashboard() {
         alert(`Failed: ${data.message || data.error}`);
       }
     } catch (error) {
-      console.error("Bulk Reset Error:", error); // FIX: Error variable used
+      console.error("Bulk Reset Error:", error); 
       alert("Failed to execute bulk reset. Network error.");
     }
+  };
+
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/teacher/students/bulk-upload', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}` 
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        let msg = data.message;
+        if (data.errors && data.errors.length > 0) {
+          msg += `\n\nError Log:\n${data.errors.slice(0, 5).join('\n')}`;
+          if (data.errors.length > 5) msg += `\n...and ${data.errors.length - 5} more.`;
+        } else {
+          msg += `\n\nStudents have been added directly to the Active Directory.`;
+        }
+        alert(msg);
+        fetchStudents(); 
+      } else {
+        alert(`Upload Failed: ${data.message}`);
+      }
+    } catch (error) {
+      console.error("Bulk Upload Error:", error);
+      alert("Failed to connect to the server for bulk upload.");
+    } finally {
+      setLoading(false);
+      e.target.value = null; 
+    }
+  };
+
+  const showCsvFormat = () => {
+    alert("Required CSV Headers:\n\nname, email, password, branch, year, division, batch, rollNo, tnpRollNo\n\nExample Data Row:\nAarav Sharma, aarav@college.edu, strongpass123, CSE, 3, A, 2025, 21CSE1001, TNP001");
   };
 
   const handleLogout = () => {
@@ -156,7 +208,6 @@ export default function TeacherDashboard() {
     navigate('/');
   };
 
-  // --- FILTER & SORT LOGIC ---
   const filteredAndSortedStudents = useMemo(() => {
     let filtered = approvedStudents.filter(student => 
       student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -168,7 +219,6 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
       
-      {/* --- TOP NAVBAR --- */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -194,10 +244,8 @@ export default function TeacherDashboard() {
         </div>
       </nav>
 
-      {/* --- MAIN CONTENT --- */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
         
-        {/* Tab Navigation */}
         <div className="flex space-x-1 bg-slate-200/50 p-1 rounded-xl w-fit mb-8 border border-slate-200 overflow-x-auto max-w-full">
           <button
             onClick={() => setActiveTab('pending')}
@@ -226,12 +274,23 @@ export default function TeacherDashboard() {
           <div className="text-center p-12 text-slate-500 font-bold animate-pulse">Syncing with Secure Database...</div>
         ) : (
           <>
-            {/* --- TAB 1: PENDING APPROVALS --- */}
             {activeTab === 'pending' && (
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-in fade-in duration-300">
-                <div className="p-6 border-b border-slate-200 bg-slate-50">
-                  <h2 className="text-lg font-bold text-slate-900">Registration Requests</h2>
-                  <p className="text-sm text-slate-500">Review and approve students to grant them platform access.</p>
+                <div className="p-6 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Registration Requests</h2>
+                    <p className="text-sm text-slate-500 mt-1">Review and approve students or upload a batch via CSV.</p>
+                  </div>
+                  
+                  <div className="flex flex-col items-end gap-1.5">
+                    <label className="cursor-pointer bg-blue-900 hover:bg-blue-800 text-white text-sm font-bold py-2.5 px-5 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                      <UploadCloud size={16} /> Bulk Upload (CSV)
+                      <input type="file" accept=".csv" className="hidden" onChange={handleBulkUpload} />
+                    </label>
+                    <button onClick={showCsvFormat} className="text-[10px] font-bold text-slate-400 hover:text-blue-600 flex items-center gap-1 uppercase tracking-wider mr-1 transition-colors">
+                      <FileText size={12} /> View CSV Format
+                    </button>
+                  </div>
                 </div>
                 
                 {pendingRequests.length === 0 ? (
@@ -270,7 +329,6 @@ export default function TeacherDashboard() {
               </div>
             )}
 
-            {/* --- TAB 2: STUDENT DIRECTORY --- */}
             {activeTab === 'directory' && (
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-in fade-in duration-300">
                 <div className="p-6 border-b border-slate-200 bg-slate-50 space-y-4">
@@ -331,7 +389,6 @@ export default function TeacherDashboard() {
               </div>
             )}
 
-            {/* --- TAB 3: TEST CREDENTIALS (Mock View) --- */}
             {activeTab === 'tests' && (
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-in fade-in duration-300">
                 <div className="p-6 border-b border-slate-200 bg-slate-50">
@@ -346,7 +403,6 @@ export default function TeacherDashboard() {
 
       </main>
 
-      {/* --- SECURE PROFILE SETTINGS MODAL --- */}
       {isProfileOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}></div>

@@ -1,4 +1,3 @@
-// src/modules/teacher/teacher.controller.js
 const prisma = require('../../config/db');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -18,7 +17,6 @@ exports.getPendingStudents = async (req, res) => {
   try {
     let whereClause = { role: 'STUDENT', status: 'PENDING' };
     
-    // Only restrict to department if the user is a standard TEACHER
     if (req.user.role === 'TEACHER') {
       const dept = await getTeacherDept(req.user.id);
       if (!dept) return res.status(403).json({ message: 'Teacher department not found' });
@@ -82,15 +80,19 @@ exports.bulkResetPasswords = async (req, res) => {
 exports.approveStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const dept = await getTeacherDept(req.user.id);
-
     const student = await prisma.user.findUnique({
       where: { id },
       include: { studentProfile: true }
     });
 
-    if (!student || student.studentProfile?.branch !== dept) {
-      return res.status(403).json({ message: 'Unauthorized: Student not in your department' });
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    // 🛡️ FIX: Only restrict branch if the user is a Teacher
+    if (req.user.role === 'TEACHER') {
+      const dept = await getTeacherDept(req.user.id);
+      if (student.studentProfile?.branch !== dept) {
+        return res.status(403).json({ message: 'Unauthorized: Student not in your department' });
+      }
     }
 
     const updatedUser = await prisma.user.update({
@@ -106,15 +108,19 @@ exports.approveStudent = async (req, res) => {
 exports.rejectStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const dept = await getTeacherDept(req.user.id);
-
     const student = await prisma.user.findUnique({
       where: { id },
       include: { studentProfile: true }
     });
 
-    if (!student || student.studentProfile?.branch !== dept) {
-      return res.status(403).json({ message: 'Unauthorized: Student not in your department' });
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    // 🛡️ FIX: Only restrict branch if the user is a Teacher
+    if (req.user.role === 'TEACHER') {
+      const dept = await getTeacherDept(req.user.id);
+      if (student.studentProfile?.branch !== dept) {
+        return res.status(403).json({ message: 'Unauthorized: Student not in your department' });
+      }
     }
 
     await prisma.user.delete({ where: { id } });
@@ -127,15 +133,20 @@ exports.rejectStudent = async (req, res) => {
 exports.resetStudentPassword = async (req, res) => {
   try {
     const { id } = req.body;
-    const dept = await getTeacherDept(req.user.id);
-
+    
     const student = await prisma.user.findUnique({
       where: { id },
       include: { studentProfile: true }
     });
 
-    if (!student || student.studentProfile?.branch !== dept) {
-      return res.status(403).json({ message: 'Unauthorized: Student not in your department' });
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    // 🛡️ FIX: Only restrict branch if the user is a Teacher
+    if (req.user.role === 'TEACHER') {
+      const dept = await getTeacherDept(req.user.id);
+      if (student.studentProfile?.branch !== dept) {
+        return res.status(403).json({ message: 'Unauthorized: Student not in your department' });
+      }
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -145,6 +156,7 @@ exports.resetStudentPassword = async (req, res) => {
       where: { id },
       data: { passwordHash }
     });
+    
     res.status(200).json({ message: 'Password reset to "password"' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to reset password' });
@@ -157,15 +169,15 @@ exports.bulkUploadStudents = async (req, res) => {
 
   try {
     const studentsData = [];
-    const stream = fs.createReadStream(filePath).pipe(csv({
-      headers: ['name', 'email', 'password', 'branch', 'year', 'division', 'batch', 'rollNo', 'tnpRollNo'],
-      skipLines: 0 
-    }));
+    const stream = fs.createReadStream(filePath).pipe(csv());
 
     for await (const row of stream) {
-      if (row.email && row.name) {
-        if (row.email.toLowerCase().includes('email') || row.name.toLowerCase().includes('name')) continue;
-        studentsData.push(row);
+      const cleanRow = {};
+      for (let key in row) {
+        cleanRow[key.trim().toLowerCase()] = row[key]?.trim();
+      }
+      if (cleanRow.email && cleanRow.name) {
+        studentsData.push(cleanRow);
       }
     }
 
@@ -175,11 +187,13 @@ exports.bulkUploadStudents = async (req, res) => {
 
     for (const data of studentsData) {
       try {
-        const existing = await prisma.user.findUnique({ where: { email: data.email } });
+        const email = data.email.toLowerCase();
+        
+        const existing = await prisma.user.findUnique({ where: { email } });
         if (existing) {
           failCount++;
-          errors.push(`${data.email}: Already registered`);
-          continue;
+          errors.push(`${email}: Already registered in database.`);
+          continue; 
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -189,36 +203,38 @@ exports.bulkUploadStudents = async (req, res) => {
         await prisma.user.create({
           data: {
             name: data.name,
-            email: data.email,
+            email: email,
             passwordHash,
             role: 'STUDENT',
-            status: 'PENDING',
+            status: 'ACTIVE', 
             studentProfile: {
               create: {
-                branch: cleanBranch,
-                year: data.year,
-                division: data.division,
-                batch: data.batch,
-                rollNo: data.rollNo,
-                tnpRollNo: data.tnpRollNo
+                branch: cleanBranch || 'General',
+                year: parseInt(data.year) || 1,
+                division: data.division || 'A',
+                batch: data.batch || '2025',
+                rollNo: data.rollno || `TEMP-${Math.floor(Math.random()*1000)}`,
+                tnpRollNo: data.tnprollno || ''
               }
             }
           }
         });
         successCount++;
-      } catch (err) {
+      } catch (rowError) {
         failCount++;
-        errors.push(`${data.email}: ${err.message}`);
+        const reason = rowError.message.split('\n').pop() || "Database constraints error";
+        errors.push(`${data.email}: ${reason}`);
       }
     }
 
     fs.unlinkSync(filePath);
     res.status(200).json({ 
-      message: `Bulk upload complete. ${successCount} added, ${failCount} failed.`,
+      message: `Bulk upload processed. ${successCount} added, ${failCount} skipped/failed.`,
       successCount, failCount, errors 
     });
   } catch (error) {
+    console.error("Bulk Upload Error:", error);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    res.status(500).json({ message: 'Failed to process CSV file' });
+    res.status(500).json({ message: 'Fatal error parsing CSV file. Check formatting.' });
   }
 };

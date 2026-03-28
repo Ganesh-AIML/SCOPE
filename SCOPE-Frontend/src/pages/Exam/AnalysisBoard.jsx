@@ -8,7 +8,6 @@ export default function AnalysisBoard() {
   const { examId } = useParams();
   const navigate = useNavigate();
   
-  // State for real-time database data
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -18,7 +17,11 @@ export default function AnalysisBoard() {
   useEffect(() => {
     const fetchAnalysis = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/student/analysis/${examId}`);
+        const response = await fetch(`http://localhost:5000/api/student/analysis/${examId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
         const result = await response.json();
         
         if (result.success) {
@@ -36,7 +39,6 @@ export default function AnalysisBoard() {
     fetchAnalysis();
   }, [examId]);
 
-  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-medium">
@@ -45,7 +47,6 @@ export default function AnalysisBoard() {
     );
   }
 
-  // Fallback if no result exists
   if (!analysis) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-500">
@@ -87,54 +88,49 @@ export default function AnalysisBoard() {
             Test: {analysis.testTitle}
           </h2>
 
-          {/* Top Metrics Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
-            
-            {/* Runtime Box */}
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-100 flex flex-col justify-center">
-              <div className="flex items-center gap-2 text-slate-600 font-semibold mb-3">
-                <Clock size={16} /> Avg Runtime
+          {/* ✅ FIX: Only render Coding Metrics if the backend flagged 'hasCoding' */}
+          {analysis.hasCoding && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+              <div className="bg-slate-50 rounded-xl p-5 border border-slate-100 flex flex-col justify-center">
+                <div className="flex items-center gap-2 text-slate-600 font-semibold mb-3">
+                  <Clock size={16} /> Avg Runtime
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-3xl font-black text-slate-900">
+                    {analysis.metrics.runtime} <span className="text-lg font-medium text-slate-500">ms</span>
+                  </span>
+                  <div className="h-6 w-[1px] bg-slate-300 mx-2"></div>
+                  <span className="text-slate-500 font-medium">Beats <span className="text-slate-900 font-bold text-xl">{analysis.metrics.beatsRuntime}%</span></span>
+                  <Flame size={20} className="text-emerald-500 ml-1" />
+                </div>
               </div>
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-black text-slate-900">
-                  {analysis.metrics.runtime} <span className="text-lg font-medium text-slate-500">ms</span>
-                </span>
-                <div className="h-6 w-[1px] bg-slate-300 mx-2"></div>
-                <span className="text-slate-500 font-medium">Beats <span className="text-slate-900 font-bold text-xl">{analysis.metrics.beatsRuntime}%</span></span>
-                <Flame size={20} className="text-emerald-500 ml-1" />
+
+              <div className="p-5 flex flex-col justify-center opacity-80 hover:opacity-100 transition-opacity cursor-pointer">
+                <div className="flex items-center gap-2 text-slate-500 font-semibold mb-3">
+                  <Cpu size={16} /> Memory Usage
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-2xl font-bold text-slate-500">
+                    {analysis.metrics.memory} <span className="text-base font-medium">MB</span>
+                  </span>
+                  <div className="h-5 w-[1px] bg-slate-200 mx-2"></div>
+                  <span className="text-slate-400 font-medium font-bold">Beats {analysis.metrics.beatsMemory}%</span>
+                </div>
               </div>
             </div>
-
-            {/* Memory Box */}
-            <div className="p-5 flex flex-col justify-center opacity-80 hover:opacity-100 transition-opacity cursor-pointer">
-              <div className="flex items-center gap-2 text-slate-500 font-semibold mb-3">
-                <Cpu size={16} /> Memory Usage
-              </div>
-              <div className="flex items-baseline gap-3">
-                <span className="text-2xl font-bold text-slate-500">
-                  {analysis.metrics.memory} <span className="text-base font-medium">MB</span>
-                </span>
-                <div className="h-5 w-[1px] bg-slate-200 mx-2"></div>
-                <span className="text-slate-400 font-medium font-bold">Beats {analysis.metrics.beatsMemory}%</span>
-              </div>
-            </div>
-
-          </div>
+          )}
 
           {/* The Distribution Chart (Bell Curve) */}
-          <div className="relative h-48 w-full border-b border-slate-200 flex items-end justify-between gap-1 pb-2">
+          <div className="relative h-48 w-full border-b border-slate-200 flex items-end justify-between gap-1 pb-2 mt-4">
             
-            {/* Y-Axis Guides */}
             <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
               <div className="w-full border-t border-slate-300"></div>
               <div className="w-full border-t border-slate-300"></div>
               <div className="w-full border-t border-slate-300"></div>
             </div>
 
-            {/* The Bars mapped from DB results */}
             {analysis.chartData?.map((data, index) => (
               <div key={index} className="relative flex-1 flex justify-center group h-full items-end">
-                {/* User Avatar pop-up */}
                 {data.isUser && (
                   <div className="absolute -top-10 z-10 flex flex-col items-center animate-bounce">
                     <div className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md bg-blue-900 flex items-center justify-center text-[10px] text-white font-bold">
@@ -143,7 +139,6 @@ export default function AnalysisBoard() {
                   </div>
                 )}
                 
-                {/* The Actual Bar */}
                 <div 
                   className={`w-full max-w-[12px] rounded-t-sm transition-all duration-500 ease-out hover:opacity-80
                     ${data.isUser ? 'bg-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.5)]' : 'bg-slate-300'}
@@ -154,7 +149,6 @@ export default function AnalysisBoard() {
             ))}
           </div>
           
-          {/* X-Axis Labels */}
           <div className="flex justify-between text-xs font-bold text-slate-400 mt-3 px-4 uppercase tracking-widest">
             <span>Faster</span>
             <span>Global Average Performance</span>

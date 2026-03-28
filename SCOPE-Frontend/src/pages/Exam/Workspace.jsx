@@ -12,11 +12,12 @@ export default function ExamWorkspace() {
   
   // --- STATE MANAGEMENT ---
   const [examData, setExamData] = useState(null);
-  const [activeSection, setActiveSection] = useState('coding'); 
+  const [activeSection, setActiveSection] = useState(null); 
   const [loading, setLoading] = useState(true);
 
-  // ✅ FIX 1: Track actual exam start time for accurate timeTaken calculation
+  // Time Tracking
   const [startTime] = useState(Date.now());
+  const [timeLeft, setTimeLeft] = useState(null);
   
   // MCQ State
   const [currentTechQ, setCurrentTechQ] = useState(0);
@@ -35,12 +36,23 @@ export default function ExamWorkspace() {
     const loadWorkspace = async () => {
       try {
         const response = await fetch(`http://localhost:5000/api/student/exam/${examId}`, {
-          // ✅ PREEMPTIVE FIX: Added auth header for when your friend's auth middleware goes live
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         const result = await response.json();
         if (result.success) {
           setExamData(result.data);
+          
+          // ✅ FIX 1: Auto-select the first available section tab
+          const aptQ = result.data.sections?.find(s => s.name === 'Aptitude')?.questions || [];
+          const techQ = result.data.sections?.find(s => s.name === 'Technical')?.questions || [];
+          const codP = result.data.codingProblems || [];
+          
+          if (aptQ.length > 0) setActiveSection('aptitude');
+          else if (techQ.length > 0) setActiveSection('technical');
+          else if (codP.length > 0) setActiveSection('coding');
+
+          const durationMins = result.data.duration ? parseInt(result.data.duration) : 120;
+          setTimeLeft(durationMins * 60);
         }
       } catch (error) {
         console.error("Failed to load exam questions", error);
@@ -51,17 +63,42 @@ export default function ExamWorkspace() {
     loadWorkspace();
   }, [examId]);
 
+  // ==========================================
+  // ⏱️ TIMER LOGIC & AUTO-SUBMIT
+  // ==========================================
+  useEffect(() => {
+    if (timeLeft === null) return;
+    if (timeLeft <= 0) {
+      handleSubmitExam(true);
+      return;
+    }
+    const timer = setInterval(() => {
+      setTimeLeft(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-bold">Entering Secure Environment...</div>;
   if (!examData) return <div className="p-10 text-center text-red-500">Error: Exam data could not be retrieved.</div>;
 
-  // Map the backend sections (Aptitude/Technical)
   const technicalQuestions = examData.sections?.find(s => s.name === 'Technical')?.questions || [];
   const aptitudeQuestions = examData.sections?.find(s => s.name === 'Aptitude')?.questions || [];
-  const codingProblem = examData.codingProblems ? examData.codingProblems[0] : null;
+  const codingProblem = examData.codingProblems?.length > 0 ? examData.codingProblems[0] : null;
+
+  // ✅ Boolean flags for rendering Dynamic Tabs
+  const hasAptitude = aptitudeQuestions.length > 0;
+  const hasTechnical = technicalQuestions.length > 0;
+  const hasCoding = !!codingProblem;
 
   // --- HANDLERS ---
-  const handleSelectOption = (section, questionIndex, optionIndex) => {
-    setAnswers(prev => ({ ...prev, [`${section}_${questionIndex}`]: optionIndex }));
+  const handleSelectOption = (questionId, optionLetter) => {
+    setAnswers(prev => ({ ...prev, [questionId]: optionLetter }));
   };
 
   const handleRunCode = () => {
@@ -71,111 +108,116 @@ export default function ExamWorkspace() {
     }, 1500);
   };
 
-  const handleSubmitExam = async () => {
-    if (window.confirm("Are you sure you want to submit the exam?")) {
+  const handleSubmitExam = async (isAutoSubmit = false) => {
+    if (!isAutoSubmit && !window.confirm("Are you sure you want to finalise and submit this exam?")) {
+      return;
+    }
       
-      // ✅ FIX 2: Calculate actual elapsed time in minutes instead of hardcoded 15
-      const elapsedMinutes = Math.max(1, Math.round((Date.now() - startTime) / 60000));
+    const elapsedMinutes = Math.max(1, Math.round((Date.now() - startTime) / 60000));
 
-      try {
-        const response = await fetch(`http://localhost:5000/api/student/exam/${examId}/submit`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}` // Auth header required by updated backend
-          },
-          body: JSON.stringify({
-            answers,      
-            sourceCode,   
-            language,
-            timeTaken: elapsedMinutes 
-          })
-        });
+    try {
+      const response = await fetch(`http://localhost:5000/api/student/exam/${examId}/submit`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          answers,      
+          sourceCode,   
+          language,
+          timeTaken: elapsedMinutes 
+        })
+      });
 
-        const result = await response.json();
-        if (result.success) {
-          navigate(`/analysis/${examId}`); 
-        } else if (response.status === 409) {
-          alert("You have already submitted this exam.");
-          navigate(`/analysis/${examId}`);
-        } else {
-          alert(result.error || "Submission failed.");
-        }
-      } catch (error) {
-        alert("Submission failed. Please check your connection.");
+      const result = await response.json();
+      if (result.success || response.status === 409) {
+        if (response.status === 409) alert("You have already submitted this exam.");
+        navigate(`/analysis/${examId}`); 
+      } else {
+        alert(result.error || "Submission failed.");
       }
+    } catch (error) {
+      alert("Submission failed. Please check your network connection.");
     }
   };
 
   // --- SUB-COMPONENTS ---
-  const renderMCQSection = (questions, currentIndex, setIndex, sectionKey) => (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-120px)] bg-slate-50">
-      <div className="w-full md:w-64 bg-white border-r border-slate-200 p-4 flex flex-col">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Question Navigator</h3>
-        <div className="grid grid-cols-5 gap-2">
-          {questions.map((_, idx) => {
-            const isAnswered = answers[`${sectionKey}_${idx}`] !== undefined;
-            const isActive = currentIndex === idx;
-            return (
-              <button
-                key={idx}
-                onClick={() => setIndex(idx)}
-                className={`w-10 h-10 rounded-lg text-sm font-bold flex items-center justify-center transition-all border
-                  ${isActive ? 'border-blue-900 ring-2 ring-blue-900/20' : 'border-slate-200'}
-                  ${isAnswered ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 hover:bg-slate-50'}
-                `}
-              >
-                {idx + 1}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col p-6 lg:p-10 overflow-y-auto">
-        <div className="max-w-3xl w-full mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <span className="text-sm font-bold text-blue-900 bg-blue-50 px-3 py-1 rounded-full">
-              Question {currentIndex + 1} of {questions.length}
-            </span>
-          </div>
-
-          <h2 className="text-xl font-bold text-slate-900 mb-8 leading-relaxed">
-            {questions[currentIndex]?.text}
-          </h2>
-
-          <div className="space-y-3">
-            {[
-              {id: 0, text: questions[currentIndex]?.optA},
-              {id: 1, text: questions[currentIndex]?.optB},
-              {id: 2, text: questions[currentIndex]?.optC},
-              {id: 3, text: questions[currentIndex]?.optD}
-            ].map((option) => {
-              const isSelected = answers[`${sectionKey}_${currentIndex}`] === option.id;
+  const renderMCQSection = (questions, currentIndex, setIndex) => {
+    const currentQ = questions[currentIndex];
+    
+    return (
+      <div className="flex flex-col md:flex-row h-[calc(100vh-120px)] bg-slate-50">
+        <div className="w-full md:w-64 bg-white border-r border-slate-200 p-4 flex flex-col">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Question Navigator</h3>
+          <div className="grid grid-cols-5 gap-2">
+            {questions.map((q, idx) => {
+              const isAnswered = answers[q.id] !== undefined;
+              const isActive = currentIndex === idx;
               return (
                 <button
-                  key={option.id}
-                  onClick={() => handleSelectOption(sectionKey, currentIndex, option.id)}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-4
-                    ${isSelected ? 'border-blue-900 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200'}`}
+                  key={idx}
+                  onClick={() => setIndex(idx)}
+                  className={`w-10 h-10 rounded-lg text-sm font-bold flex items-center justify-center transition-all border
+                    ${isActive ? 'border-blue-900 ring-2 ring-blue-900/20' : 'border-slate-200'}
+                    ${isAnswered ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 hover:bg-slate-50'}
+                  `}
                 >
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-blue-900' : 'border-slate-300'}`}>
-                    {isSelected && <div className="w-2.5 h-2.5 bg-blue-900 rounded-full"></div>}
-                  </div>
-                  <span className="font-medium text-base">{option.text}</span>
+                  {idx + 1}
                 </button>
               );
             })}
           </div>
+        </div>
 
-          <div className="mt-10 pt-6 border-t border-slate-200 flex justify-between">
-            <button onClick={() => setIndex(Math.max(0, currentIndex - 1))} disabled={currentIndex === 0} className="px-5 py-2.5 rounded-lg font-bold text-slate-600 bg-white border border-slate-200 disabled:opacity-50 transition-all flex items-center gap-2"><ChevronLeft size={18}/> Previous</button>
-            <button onClick={() => setIndex(Math.min(questions.length - 1, currentIndex + 1))} disabled={currentIndex === questions.length - 1} className="px-5 py-2.5 rounded-lg font-bold text-white bg-blue-900 shadow-md flex items-center gap-2">Next <ChevronRight size={18}/></button>
+        <div className="flex-1 flex flex-col p-6 lg:p-10 overflow-y-auto">
+          <div className="max-w-3xl w-full mx-auto">
+            <div className="flex items-center justify-between mb-6">
+              <span className="text-sm font-bold text-blue-900 bg-blue-50 px-3 py-1 rounded-full">
+                Question {currentIndex + 1} of {questions.length}
+              </span>
+            </div>
+
+            <h2 className="text-xl font-bold text-slate-900 mb-8 leading-relaxed">
+              {currentQ?.text}
+            </h2>
+
+            <div className="space-y-3">
+              {[
+                { letter: 'A', text: currentQ?.optA },
+                { letter: 'B', text: currentQ?.optB },
+                { letter: 'C', text: currentQ?.optC },
+                { letter: 'D', text: currentQ?.optD }
+              ].map((option) => {
+                const isSelected = answers[currentQ?.id] === option.letter;
+                return (
+                  <button
+                    key={option.letter}
+                    onClick={() => handleSelectOption(currentQ?.id, option.letter)}
+                    className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-4
+                      ${isSelected ? 'border-blue-900 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200'}`}
+                  >
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-blue-900' : 'border-slate-300'}`}>
+                      {isSelected && <div className="w-2.5 h-2.5 bg-blue-900 rounded-full"></div>}
+                    </div>
+                    <span className="font-medium text-base">
+                      <strong className="mr-2 text-slate-400">{option.letter}.</strong> 
+                      {option.text}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-10 pt-6 border-t border-slate-200 flex justify-between">
+              <button onClick={() => setIndex(Math.max(0, currentIndex - 1))} disabled={currentIndex === 0} className="px-5 py-2.5 rounded-lg font-bold text-slate-600 bg-white border border-slate-200 disabled:opacity-50 transition-all flex items-center gap-2"><ChevronLeft size={18}/> Previous</button>
+              <button onClick={() => setIndex(Math.min(questions.length - 1, currentIndex + 1))} disabled={currentIndex === questions.length - 1} className="px-5 py-2.5 rounded-lg font-bold text-white bg-blue-900 shadow-md flex items-center gap-2">Next <ChevronRight size={18}/></button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderCodingSection = () => (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-120px)]">
@@ -198,7 +240,6 @@ export default function ExamWorkspace() {
         </div>
 
         <div className="flex-1 relative">
-          {/* ✅ FIX 3: Robust Error Boundary / Fallback for Monaco Editor CDN failure */}
           <Suspense fallback={
             <div className="flex flex-col items-center justify-center h-full bg-[#1e1e1e] text-slate-400 p-6 text-center">
               <AlertTriangle size={32} className="text-amber-500 mb-4" />
@@ -222,25 +263,28 @@ export default function ExamWorkspace() {
     <div className="h-screen flex flex-col bg-slate-50 font-sans overflow-hidden">
       <header className="bg-white border-b border-slate-200 h-16 flex-shrink-0 flex items-center justify-between px-6 shadow-sm z-20">
         <div className="flex items-center gap-4">
-          <Clock size={20} className="text-red-600 animate-pulse" />
+          <Clock size={20} className={`${timeLeft <= 300 ? 'text-red-600 animate-pulse' : 'text-slate-600'}`} />
           <div>
             <h1 className="text-lg font-bold text-slate-900 leading-tight">{examData.title}</h1>
-            <p className="text-xs font-bold text-red-600 tracking-wider uppercase">Exam in Progress</p>
+            <p className={`text-xs font-bold tracking-wider uppercase ${timeLeft <= 300 ? 'text-red-600' : 'text-blue-600'}`}>
+              {timeLeft !== null ? `${formatTime(timeLeft)} Remaining` : 'Calculating Time...'}
+            </p>
           </div>
         </div>
-        <button onClick={handleSubmitExam} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md active:scale-95 transition-all">Finish & Submit Exam</button>
+        <button onClick={() => handleSubmitExam(false)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md active:scale-95 transition-all">Finish & Submit Exam</button>
       </header>
 
+      {/* ✅ FIX 2: Render Tabs Dynamically based on available questions */}
       <div className="bg-white border-b border-slate-200 flex px-6 flex-shrink-0 z-10">
-        <button onClick={() => setActiveSection('coding')} className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 ${activeSection === 'coding' ? 'border-blue-900 text-blue-900' : 'border-transparent text-slate-500'}`}><Code size={18} /> Coding</button>
-        <button onClick={() => setActiveSection('technical')} className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 ${activeSection === 'technical' ? 'border-blue-900 text-blue-900' : 'border-transparent text-slate-500'}`}><FileText size={18} /> Technical</button>
-        <button onClick={() => setActiveSection('aptitude')} className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 ${activeSection === 'aptitude' ? 'border-blue-900 text-blue-900' : 'border-transparent text-slate-500'}`}><BrainCircuit size={18} /> Aptitude</button>
+        {hasAptitude && <button onClick={() => setActiveSection('aptitude')} className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 ${activeSection === 'aptitude' ? 'border-blue-900 text-blue-900' : 'border-transparent text-slate-500'}`}><BrainCircuit size={18} /> Aptitude</button>}
+        {hasTechnical && <button onClick={() => setActiveSection('technical')} className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 ${activeSection === 'technical' ? 'border-blue-900 text-blue-900' : 'border-transparent text-slate-500'}`}><FileText size={18} /> Technical</button>}
+        {hasCoding && <button onClick={() => setActiveSection('coding')} className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 ${activeSection === 'coding' ? 'border-blue-900 text-blue-900' : 'border-transparent text-slate-500'}`}><Code size={18} /> Coding</button>}
       </div>
 
       <main className="flex-1 overflow-hidden">
         {activeSection === 'coding' && renderCodingSection()}
-        {activeSection === 'technical' && renderMCQSection(technicalQuestions, currentTechQ, setCurrentTechQ, 'tech')}
-        {activeSection === 'aptitude' && renderMCQSection(aptitudeQuestions, currentAptQ, setCurrentAptQ, 'apt')}
+        {activeSection === 'technical' && renderMCQSection(technicalQuestions, currentTechQ, setCurrentTechQ)}
+        {activeSection === 'aptitude' && renderMCQSection(aptitudeQuestions, currentAptQ, setCurrentAptQ)}
       </main>
     </div>
   );

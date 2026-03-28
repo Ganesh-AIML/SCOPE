@@ -1,0 +1,6 @@
+name,email,password,branch,year,division,batch,rollNo,tnpRollNo
+Aarav Sharma,aarav.s@college.edu,pass123,CSE,3,A,2025,21CSE1001,TNP001
+Rohan Patel,rohan.p@college.edu,pass123,IT,3,B,2025,21IT1042,TNP002
+Sneha Iyer,sneha.i@college.edu,pass123,AI&ML,2,A,2026,22AIML015,TNP003
+Karan Mehta,karan.m@college.edu,pass123,ECE,4,C,2024,20ECE088,TNP004
+Priya Nair,priya.n@college.edu,pass123,MECH,3,A,2025,21ME007,TNP005

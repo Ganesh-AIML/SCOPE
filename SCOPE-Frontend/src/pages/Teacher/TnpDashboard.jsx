@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom'; // <--- ADD THIS LINE
+import { useNavigate } from 'react-router-dom'; 
 import { 
   User, Briefcase, ChevronDown, LogOut, Settings, Mail, BadgeCheck 
 } from 'lucide-react';
@@ -21,23 +21,23 @@ export default function TnpDashboard() {
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // CORRECTED: Mock data completely removed to prevent UI flashing
   const [liveTests, setLiveTests] = useState([]);
   const [upcomingTests, setUpcomingTests] = useState([]);
   const [draftTests, setDraftTests] = useState([]);
-  const [pastTests, setPastTests] = useState([]); // Kept as state in case you fetch past tests later
+  const [pastTests, setPastTests] = useState([]); 
 
-  // Fetch real data from PostgreSQL on component mount
+  // 🚀 FETCH 1: Load all tests
   useEffect(() => {
     const fetchAllTests = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/tnp/tests');
+        const response = await fetch('http://localhost:5000/api/tnp/all-tests', {
+          // 🛡️ FIX: Added Authorization Header
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
         const result = await response.json();
 
         if (result.success) {
           const now = new Date();
-          
-          // Sort tests into Upcoming vs Live/Past based on their date
           const upcoming = result.data.filter(test => new Date(test.date) > now);
           const live = result.data.filter(test => new Date(test.date) <= now);
 
@@ -54,12 +54,15 @@ export default function TnpDashboard() {
     fetchAllTests(); 
   }, []);
 
+  // 🚀 FETCH 2: Publish a new test
   const handlePublishTest = async (newTest) => {
     try {
-      const response = await fetch('http://localhost:5000/api/tnp/tests/schedule', {
+      const response = await fetch('http://localhost:5000/api/tnp/schedule', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // 🛡️ FIX: Added Authorization Header
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify(newTest),
       });
@@ -81,7 +84,7 @@ export default function TnpDashboard() {
         setIsCreatingTest(false); 
         setEditingDraft(null); 
       } else {
-        alert("Error saving test: " + result.error);
+        alert("Error saving test: " + (result.error || result.message));
       }
     } catch (error) {
       console.error("Network Error:", error);
@@ -107,27 +110,25 @@ export default function TnpDashboard() {
   };
 
   const handleSignOut = () => {
-    // 1. Clear any session data (important for security)
-    localStorage.removeItem('token'); // Assuming your friend uses this name
+    localStorage.removeItem('token'); 
     localStorage.removeItem('user');
-
-    // 2. Redirect to the Login page
-    navigate('/'); // Or '/login' depending on your App.js routes
+    navigate('/'); 
   };
 
- const handleDeleteTest = async (testId, category) => {
-    // Add a safety check so you don't accidentally delete real tests
+  // 🚀 FETCH 3: Delete a test
+  const handleDeleteTest = async (testId, category) => {
     if (!window.confirm("Are you sure you want to delete this test? This action cannot be undone.")) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/tnp/tests/${testId}`, {
+      const response = await fetch(`http://localhost:5000/api/tnp/test/${testId}`, {
         method: 'DELETE',
+        // 🛡️ FIX: Added Authorization Header
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       
       const result = await response.json();
 
       if (result.success) {
-        // Remove the deleted test from the React UI so it disappears instantly
         if (category === 'upcoming') {
           setUpcomingTests(prev => prev.filter(t => t.id !== testId));
         } else if (category === 'live') {
@@ -142,14 +143,16 @@ export default function TnpDashboard() {
     }
   };
 
+  // 🚀 FETCH 4: View Test Details
   const handleViewTestDetails = async (testShallow) => {
     try {
-      // Fetch the FULL test data including questions and test cases
-      const response = await fetch(`http://localhost:5000/api/tnp/tests/${testShallow.id}`);
+      const response = await fetch(`http://localhost:5000/api/tnp/test/${testShallow.id}`, {
+        // 🛡️ FIX: Added Authorization Header
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
       const result = await response.json();
 
       if (result.success) {
-        // Pass the deep data to the preview component!
         setSelectedUpcomingTest(result.data); 
       } else {
         alert("Error loading test details: " + result.error);
@@ -264,7 +267,6 @@ export default function TnpDashboard() {
             onViewUpcoming={handleViewTestDetails}
             onResumeDraft={handleResumeDraft} 
             onMonitorLive={(test) => setSelectedLiveTest(test)} 
-            // YOU MISSED THIS LINE RIGHT HERE:
             onDeleteTest={handleDeleteTest}
             pastTests={pastTests} 
             liveTests={liveTests} 

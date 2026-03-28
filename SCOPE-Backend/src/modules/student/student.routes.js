@@ -14,4 +14,7 @@ router.post('/exam/:id/submit', restrictTo('STUDENT'), studentController.submitE
 // Students and Teachers/TnP can view analysis
 router.get('/analysis/:id', restrictTo('STUDENT', 'TEACHER', 'TNP_ADMIN'), studentController.getAnalysis);
 
+// 🛡️ NEW FEATURE: Update Password Route
+router.put('/update-password', restrictTo('STUDENT'), studentController.updatePassword);
+
 module.exports = router;

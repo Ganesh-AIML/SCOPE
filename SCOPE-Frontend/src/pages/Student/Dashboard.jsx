@@ -10,30 +10,40 @@ export default function Dashboard() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // --- REAL DATA STATE ---
+  const [studentProfile, setStudentProfile] = useState(null);
   const [liveExams, setLiveExams] = useState([]);
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [pastExams, setPastExams] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // 🛡️ NEW STATE: Password Update
+  const [passwords, setPasswords] = useState({ current: '', new: '' });
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // --- 🚀 BACKEND SYNC: Fetch Tests from PostgreSQL ---
   useEffect(() => {
     const fetchExams = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/student/available-tests');
+        const response = await fetch('http://localhost:5000/api/student/available-tests', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
         const result = await response.json();
         
         if (result.success) {
+          const { profile, availableTests, pastResults } = result.data;
+          
+          setStudentProfile(profile);
+
           const now = new Date();
           
-          // Filter Live vs Upcoming based on the current date/time
-          const live = result.data.filter(test => new Date(test.date) <= now);
-          const upcoming = result.data.filter(test => new Date(test.date) > now);
+          const live = availableTests.filter(test => new Date(test.date) <= now);
+          const upcoming = availableTests.filter(test => new Date(test.date) > now);
 
           setLiveExams(live);
           setUpcomingExams(upcoming);
-          
-          // Past exams can be initialized as empty until results module is linked
-          setPastExams([]); 
+          setPastExams(pastResults); 
         }
       } catch (error) {
         console.error("Error loading student dashboard:", error);
@@ -47,8 +57,58 @@ export default function Dashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-bold">Loading your assessments...</div>;
 
   const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     navigate('/');
   };
+
+  // 🛡️ NEW FEATURE: Update Password API Call
+  const handleUpdatePassword = async () => {
+    if (!passwords.current || !passwords.new) {
+      alert("Please fill in both password fields.");
+      return;
+    }
+    if (passwords.new.length < 6) {
+      alert("Your new password must be at least 6 characters long.");
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      const response = await fetch('http://localhost:5000/api/student/update-password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          currentPassword: passwords.current,
+          newPassword: passwords.new
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert("Success! Your password has been updated securely.");
+        setPasswords({ current: '', new: '' }); // Clear the fields
+        setIsProfileOpen(false); // Close the modal
+      } else {
+        alert(result.error || "Failed to update password.");
+      }
+    } catch (error) {
+      console.error("Password Update Error:", error);
+      alert("Network error while attempting to update password.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const name = studentProfile?.name || "Student User";
+  const rollNo = studentProfile?.studentProfile?.rollNo || "N/A";
+  const branch = studentProfile?.studentProfile?.branch || "General Course";
+  const batch = studentProfile?.studentProfile?.batch || "N/A";
+  const email = studentProfile?.email || "student@college.edu";
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
@@ -72,8 +132,8 @@ export default function Dashboard() {
               className="flex items-center gap-3 hover:bg-slate-50 p-2 rounded-lg transition-colors border border-transparent hover:border-slate-200"
             >
               <div className="text-right hidden md:block">
-                <p className="text-sm font-bold text-slate-900 leading-tight">Anuj (21BCE10243)</p>
-                <p className="text-xs text-slate-500 font-medium">Computer Science</p>
+                <p className="text-sm font-bold text-slate-900 leading-tight">{name} ({rollNo})</p>
+                <p className="text-xs text-slate-500 font-medium">{branch}</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-900">
                 <User size={20} />
@@ -167,7 +227,7 @@ export default function Dashboard() {
                 <tbody className="divide-y divide-slate-100">
                   {pastExams.length > 0 ? pastExams.map(exam => (
                     <tr key={exam.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-slate-900">{exam.title}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-900 flex items-center gap-2 cursor-pointer hover:underline" onClick={() => navigate(`/analysis/${exam.id}`)}>{exam.title}</td>
                       <td className="px-6 py-4 text-slate-600">{exam.date}</td>
                       <td className="px-6 py-4 font-bold text-slate-900">{exam.score}</td>
                       <td className="px-6 py-4 text-right">
@@ -206,8 +266,8 @@ export default function Dashboard() {
             <div className="p-6 space-y-6">
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Student Profile</p>
-                <p className="font-bold text-slate-900">Anuj (21BCE10243)</p>
-                <p className="text-sm text-slate-600">Computer Science • Batch of 2023-2027</p>
+                <p className="font-bold text-slate-900">{name} ({rollNo})</p>
+                <p className="text-sm text-slate-600">{branch} • Batch of {batch}</p>
               </div>
 
               <div>
@@ -219,7 +279,7 @@ export default function Dashboard() {
                   <Mail size={16} className="absolute left-3 top-3 text-slate-400" />
                   <input 
                     type="email" 
-                    defaultValue="anuj.dev@college.edu" 
+                    defaultValue={email} 
                     disabled
                     className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-lg pl-10 pr-4 py-2.5 cursor-not-allowed focus:outline-none text-sm font-medium" 
                   />
@@ -229,12 +289,15 @@ export default function Dashboard() {
               <div className="pt-2 border-t border-slate-100 space-y-4">
                 <h3 className="text-sm font-bold text-slate-900">Update Security Credentials</h3>
                 
+                {/* 🛡️ FIX: Controlled Password Inputs */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Current Password</label>
                   <div className="relative">
                     <Lock size={16} className="absolute left-3 top-3 text-slate-400" />
                     <input 
                       type="password" 
+                      value={passwords.current}
+                      onChange={(e) => setPasswords({...passwords, current: e.target.value})}
                       placeholder="Enter current password to authorize" 
                       className="w-full bg-white border border-slate-300 text-slate-900 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 text-sm" 
                     />
@@ -247,6 +310,8 @@ export default function Dashboard() {
                     <KeyRound size={16} className="absolute left-3 top-3 text-slate-400" />
                     <input 
                       type="password" 
+                      value={passwords.new}
+                      onChange={(e) => setPasswords({...passwords, new: e.target.value})}
                       placeholder="Create a new strong password" 
                       className="w-full bg-white border border-slate-300 text-slate-900 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 text-sm" 
                     />
@@ -260,8 +325,13 @@ export default function Dashboard() {
                 <LogOut size={16} /> Sign Out
               </button>
               
-              <button onClick={() => setIsProfileOpen(false)} className="bg-blue-900 hover:bg-blue-800 text-white text-sm font-bold py-2.5 px-6 rounded-lg transition-all shadow-sm">
-                Update Password
+              {/* 🛡️ FIX: Bound the button to the API call */}
+              <button 
+                onClick={handleUpdatePassword}
+                disabled={isUpdating}
+                className={`bg-blue-900 hover:bg-blue-800 text-white text-sm font-bold py-2.5 px-6 rounded-lg transition-all shadow-sm ${isUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
+              >
+                {isUpdating ? 'Updating...' : 'Update Password'}
               </button>
             </div>
 

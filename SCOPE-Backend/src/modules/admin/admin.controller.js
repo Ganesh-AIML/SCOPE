@@ -20,8 +20,18 @@ exports.getPendingStaff = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
+    // 🛡️ MEDIUM FIX: Select specific fields to exclude passwordHash
     const users = await prisma.user.findMany({
-      include: { staffProfile: true, studentProfile: true }
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        staffProfile: true,
+        studentProfile: true
+      }
     });
     res.status(200).json(users);
   } catch (error) {

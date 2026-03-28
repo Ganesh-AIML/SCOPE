@@ -1,14 +1,33 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const bcrypt = require('bcryptjs'); // 🛡️ NEW: Required for secure password hashing
 
 // Fetch tests available for the student (Both Live and Upcoming)
 exports.getAvailableTests = async (req, res) => {
   try {
+    const studentId = req.user?.id;
+    if (!studentId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    // 1. Fetch Profile Data for the Dashboard UI
+    const userProfile = await prisma.user.findUnique({
+      where: { id: studentId },
+      include: { studentProfile: true }
+    });
+
+    // 2. Fetch Past Results (The Root Fix for Issue #3)
+    const pastResults = await prisma.studentResult.findMany({
+      where: { studentId },
+      include: { test: true },
+      orderBy: { submittedAt: 'desc' }
+    });
+    const pastTestIds = pastResults.map(r => r.testId);
+
+    // 3. Fetch Available Tests (Excluding tests already taken)
     const tests = await prisma.tnpTest.findMany({
-      // 🚨 REMOVED the strict "lte: now" date filter so future tests show up!
       where: {
-        // You can add logic here later if you want to hide "Drafts"
-        // status: { not: "Draft" } 
+        deletedAt: null,
+        status: { in: ['Upcoming', 'Live'] },
+        id: { notIn: pastTestIds } // 🛡️ The Root Fix for Issue #2
       },
       select: {
         id: true,
@@ -16,14 +35,26 @@ exports.getAvailableTests = async (req, res) => {
         date: true,
         duration: true,
         status: true,
-        // We do NOT send questions yet to prevent inspection-tool cheating
       },
       orderBy: {
-        date: 'asc' // Sort them so the closest tests appear first
+        date: 'asc' 
       }
     });
 
-    res.status(200).json({ success: true, data: tests });
+    res.status(200).json({ 
+      success: true, 
+      data: {
+        profile: userProfile,
+        availableTests: tests,
+        pastResults: pastResults.map(r => ({
+          id: r.test.id,
+          title: r.test.title,
+          date: new Date(r.submittedAt).toLocaleDateString(),
+          score: r.totalScore,
+          status: (r.totalScore >= 60) ? 'Passed' : 'Needs Review'
+        }))
+      }
+    });
   } catch (error) {
     console.error("Error fetching student tests:", error);
     res.status(500).json({ success: false, error: 'Failed to load assessments.' });
@@ -55,7 +86,6 @@ exports.getExamDetails = async (req, res) => {
     const secureExam = {
       title: exam.title,
       duration: exam.duration,
-      // Map sections and remove the 'ans' field from each question
       sections: exam.sections.map(sec => ({
         name: sec.name,
         questions: sec.questions.map(q => ({
@@ -65,10 +95,8 @@ exports.getExamDetails = async (req, res) => {
           optB: q.optB,
           optC: q.optC,
           optD: q.optD,
-          // We DO NOT include q.ans here!
         }))
       })),
-      // Map coding problems and hide 'expectedOutput' for hidden test cases
       codingProblems: exam.codingProblems.map(cp => ({
         id: cp.id,
         title: cp.title,
@@ -80,7 +108,6 @@ exports.getExamDetails = async (req, res) => {
           id: tc.id,
           input: tc.input,
           isHidden: tc.isHidden,
-          // Only send output if it's a "Sample" case, hide if 'isHidden' is true
           expectedOutput: tc.isHidden ? null : tc.expectedOutput 
         }))
       }))
@@ -93,19 +120,18 @@ exports.getExamDetails = async (req, res) => {
   }
 };
 
-
 exports.submitExam = async (req, res) => {
   try {
     const { id: testId } = req.params;
     const { answers, sourceCode, language, timeTaken } = req.body;
     
-    // ✅ FIX 1: Strict Auth Requirement (No more "student_1" ghost accounts)
+    // ✅ FIX 1: Strict Auth Requirement
     const studentId = req.user?.id; 
     if (!studentId) {
       return res.status(401).json({ success: false, error: 'Unauthorized: User identity required.' });
     }
 
-    // ✅ FIX 2: Idempotency Guard (Prevents double-click duplicate rows)
+    // ✅ FIX 2: Idempotency Guard
     const existingSubmission = await prisma.studentResult.findFirst({
       where: { testId, studentId }
     });
@@ -118,7 +144,6 @@ exports.submitExam = async (req, res) => {
       });
     }
 
-    // 1. Fetch the original test with correct answers for grading
     const test = await prisma.tnpTest.findUnique({
       where: { id: testId },
       include: {
@@ -132,19 +157,13 @@ exports.submitExam = async (req, res) => {
     let aptScore = 0, techScore = 0, totalScore = 0;
     const mcqSubmissions = [];
 
-    // 2. Grade MCQ Sections
     test.sections.forEach(section => {
-      section.questions.forEach((q, idx) => {
-        // Workspace.jsx uses format: { "tech_0": index, "apt_1": index }
-        const sectionKey = section.name.toLowerCase().startsWith('apt') ? 'apt' : 'tech';
-        const studentChoiceIndex = answers[`${sectionKey}_${idx}`];
-        
-        // Map index (0,1,2,3) to letter (A,B,C,D) to match DB
-        const indexToLetter = ['A', 'B', 'C', 'D'];
-        const selectedLetter = indexToLetter[studentChoiceIndex];
+      section.questions.forEach((q) => {
+        const selectedLetter = answers[q.id];
         const isCorrect = selectedLetter === q.ans;
 
         if (isCorrect) {
+          const sectionKey = section.name.toLowerCase().startsWith('apt') ? 'apt' : 'tech';
           if (sectionKey === 'apt') aptScore += 1;
           else techScore += 1;
         }
@@ -157,7 +176,6 @@ exports.submitExam = async (req, res) => {
       });
     });
 
-    // 3. Create the Result record (Coding is initialized as 'Pending' for Judge0)
     const result = await prisma.studentResult.create({
       data: {
         studentId,
@@ -165,14 +183,14 @@ exports.submitExam = async (req, res) => {
         timeTaken: timeTaken || 0,
         aptScore,
         techScore,
-        totalScore: aptScore + techScore, // Coding score updated after Judge0 runs
+        totalScore: aptScore + techScore, 
         mcqSubmissions: { create: mcqSubmissions },
         codingSubmissions: {
           create: test.codingProblems.map(cp => ({
             problemId: cp.id,
             language: language || 'java',
             submittedCode: sourceCode || '',
-            status: 'Accepted', // Placeholder: Usually 'Processing'
+            status: 'Accepted', 
             testCasesPassed: 0,
             totalTestCases: 0
           }))
@@ -192,18 +210,15 @@ exports.submitExam = async (req, res) => {
   }
 };
 
-
 exports.getAnalysis = async (req, res) => {
   try {
     const { id: testId } = req.params;
     
-    // ✅ FIX 3: Strict Auth Check
     const studentId = req.user?.id; 
     if (!studentId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    // 1. Fetch this student's specific result
     const studentResult = await prisma.studentResult.findFirst({
       where: { testId, studentId },
       include: {
@@ -219,15 +234,15 @@ exports.getAnalysis = async (req, res) => {
       return res.status(404).json({ success: false, error: "Result not found" });
     }
 
-    // ✅ FIX 4: Memory Leak Fix - ONLY fetch total scores to calculate percentiles and build the chart
-    // We strictly avoid joining `codingSubmissions` here so we don't crash the server with 1,000+ heavy rows.
+    // ✅ ROOT FIX: Flag to tell the UI if it should render coding metrics
+    const hasCoding = studentResult.codingSubmissions && studentResult.codingSubmissions.length > 0;
+
     const allScores = await prisma.studentResult.findMany({
       where: { testId },
       orderBy: { totalScore: 'desc' },
       select: { studentId: true, totalScore: true }
     });
 
-    // 3. Fetch ONLY Top 5 for the Leaderboard
     const topLeaderboard = await prisma.studentResult.findMany({
       where: { testId },
       orderBy: { totalScore: 'desc' },
@@ -235,17 +250,14 @@ exports.getAnalysis = async (req, res) => {
       select: { studentId: true, totalScore: true, timeTaken: true }
     });
 
-    // Calculate Percentile (Beats X%)
     const totalParticipants = allScores.length;
     const rank = allScores.findIndex(r => r.studentId === studentId) + 1;
     const beatsPercent = totalParticipants > 1 
       ? (((totalParticipants - rank) / totalParticipants) * 100).toFixed(2) 
       : "100";
 
-    // ✅ FIX 5: Dynamic Chart Height Normalization 
-    // Divide by the highest achieved score (not a hardcoded 100)
     const absoluteMaxScore = allScores.length > 0 ? allScores[0].totalScore : 100;
-    const safeMaxScore = absoluteMaxScore > 0 ? absoluteMaxScore : 100; // Prevent divide by zero
+    const safeMaxScore = absoluteMaxScore > 0 ? absoluteMaxScore : 100;
 
     const chartData = allScores.map(r => ({
       height: (r.totalScore / safeMaxScore) * 100, 
@@ -256,10 +268,11 @@ exports.getAnalysis = async (req, res) => {
       success: true,
       data: {
         testTitle: studentResult.test.title,
+        hasCoding, // Trigger passed to UI
         metrics: {
           runtime: studentResult.codingSubmissions[0]?.runtime || "0",
           memory: studentResult.codingSubmissions[0]?.memory || "0",
-          beatsRuntime: beatsPercent, // Utilizing proper percentile calculation
+          beatsRuntime: beatsPercent,
           beatsMemory: (parseFloat(beatsPercent) * 0.9).toFixed(2)
         },
         chartData,
@@ -274,5 +287,49 @@ exports.getAnalysis = async (req, res) => {
   } catch (error) {
     console.error("Analysis Error:", error);
     res.status(500).json({ success: false, error: "Failed to load analysis." });
+  }
+};
+
+// ... [Keep all your existing getAvailableTests, getExamDetails, submitExam, getAnalysis functions here exactly as they are] ...
+
+// 🛡️ NEW FEATURE: Secure Password Update
+exports.updatePassword = async (req, res) => {
+  try {
+    const studentId = req.user?.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!studentId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Missing password fields' });
+    }
+
+    // 1. Fetch user to get their current hashed password
+    const user = await prisma.user.findUnique({ where: { id: studentId } });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // 2. Verify the provided current password
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: 'Incorrect current password' });
+    }
+
+    // 3. Hash the new password securely
+    const salt = await bcrypt.genSalt(10);
+    const newPasswordHash = await bcrypt.hash(newPassword, salt);
+
+    // 4. Update the database
+    await prisma.user.update({
+      where: { id: studentId },
+      data: { passwordHash: newPasswordHash }
+    });
+
+    res.status(200).json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error("Update Password Error:", error);
+    res.status(500).json({ success: false, error: 'Failed to update password' });
   }
 };

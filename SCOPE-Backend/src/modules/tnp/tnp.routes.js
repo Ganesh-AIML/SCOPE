@@ -13,4 +13,7 @@ router.get('/test/:id', tnpController.getTestById);
 router.delete('/test/:id', tnpController.deleteTest);
 router.get('/performance/:testId/:studentId', tnpController.getStudentPerformance);
 
+// 🛡️ THE ROOT FIX: Secure endpoint for dynamic chart aggregation
+router.get('/test/:id/analytics', tnpController.getTestAnalytics);
+
 module.exports = router;
